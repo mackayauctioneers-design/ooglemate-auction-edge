@@ -148,3 +148,77 @@ export const dealerUpdates: DealerUpdate[] = [
   { at: "Yesterday 3:40pm", rego: "EXA19C", car: "2019 Mazda CX-5 Maxx Sport", status: "handover", text: "You picked Alex at $24,800. You both have each other's details to arrange pickup and payment." },
   { at: "Yesterday 11:15am", rego: "EXA20T", car: "2020 Toyota Corolla Ascent Sport", status: "picked", text: "4 prices in. You picked Cam at $19,900." },
 ];
+
+export type PriceOutcome = "picked" | "not_picked" | "open" | "dealer_kept";
+
+export interface PriceEvent {
+  amount: number;
+  at: string; // ISO with offset; shown in Sydney time
+  note: string | null;
+}
+
+export interface BuyerPriceHistoryRow {
+  ref: string;
+  year: number;
+  make: string;
+  model: string;
+  badge: string;
+  km: number;
+  state: string;
+  sellerLabel: string; // never a dealer name or number
+  franchise: boolean;
+  /** Oldest first. Every price the buyer gave is kept; nothing is overwritten. */
+  events: PriceEvent[];
+  outcome: PriceOutcome;
+  outcomeAt: string | null;
+}
+
+/** Example price history for one approved buyer (Alex). Example data only. */
+export const buyerPriceHistory: BuyerPriceHistoryRow[] = [
+  {
+    ref: "WT-EX21P", year: 2021, make: "Toyota", model: "RAV4", badge: "GX Hybrid 2WD", km: 58400, state: "NSW",
+    sellerLabel: "Franchise dealer, NSW", franchise: true,
+    events: [{ amount: 30200, at: "2026-11-20T09:18:00+11:00", note: null }],
+    outcome: "open", outcomeAt: null,
+  },
+  {
+    ref: "WT-EX19H", year: 2019, make: "Toyota", model: "Hilux", badge: "SR5 4x4", km: 162000, state: "QLD",
+    sellerLabel: "Used car yard, QLD", franchise: false,
+    events: [
+      { amount: 23800, at: "2026-11-19T14:02:00+11:00", note: null },
+      { amount: 24100, at: "2026-11-19T15:47:00+11:00", note: "Raised after seeing the service history." },
+    ],
+    outcome: "open", outcomeAt: null,
+  },
+  {
+    ref: "WT-EX19C", year: 2019, make: "Mazda", model: "CX-5", badge: "Maxx Sport", km: 88300, state: "NSW",
+    sellerLabel: "Franchise dealer, NSW", franchise: true,
+    events: [
+      { amount: 24500, at: "2026-11-19T10:12:00+11:00", note: null },
+      { amount: 24800, at: "2026-11-19T13:05:00+11:00", note: "Can collect Thursday." },
+    ],
+    outcome: "picked", outcomeAt: "2026-11-19T15:40:00+11:00",
+  },
+  {
+    ref: "WT-EX20T", year: 2020, make: "Toyota", model: "Corolla", badge: "Ascent Sport", km: 71200, state: "VIC",
+    sellerLabel: "Franchise dealer, VIC", franchise: true,
+    events: [{ amount: 19400, at: "2026-11-19T09:20:00+11:00", note: null }],
+    outcome: "not_picked", outcomeAt: "2026-11-19T11:15:00+11:00",
+  },
+  {
+    ref: "WT-EX18R", year: 2018, make: "Ford", model: "Ranger", badge: "XLT 3.2 4x4", km: 141500, state: "NSW",
+    sellerLabel: "Used car yard, NSW", franchise: false,
+    events: [{ amount: 27900, at: "2026-11-18T16:30:00+11:00", note: null }],
+    outcome: "dealer_kept", outcomeAt: "2026-11-19T08:55:00+11:00",
+  },
+  {
+    ref: "WT-EX17K", year: 2017, make: "Kia", model: "Sportage", badge: "SLi AWD", km: 118900, state: "QLD",
+    sellerLabel: "Franchise dealer, QLD", franchise: true,
+    events: [
+      { amount: 13900, at: "2026-11-17T11:41:00+11:00", note: null },
+      { amount: 13500, at: "2026-11-17T12:10:00+11:00", note: "Lowered after the hail photos." },
+      { amount: 13700, at: "2026-11-17T12:32:00+11:00", note: null },
+    ],
+    outcome: "not_picked", outcomeAt: "2026-11-17T17:02:00+11:00",
+  },
+];

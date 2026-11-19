@@ -139,6 +139,7 @@ import PortalInsightsPage from "./portal/InsightsPage";
 import PortalImportPage from "./portal/ImportPage";
 import PortalConnectPage from "./portal/ConnectPage";
 import {
+  BuyerPriceHistoryPage,
   WholesaleBuyerPage,
   WholesaleComparePage,
   WholesaleGuidePage,
@@ -193,6 +194,7 @@ const App = () => (
               <Route path="/demo" element={<DemoDashboardPage />} />
               <Route path="/portal/login" element={<PortalLoginPage />} />
               <Route path="/portal/buyer-view" element={<WholesaleBuyerPage />} />
+              <Route path="/portal/buyer-prices" element={<BuyerPriceHistoryPage />} />
               <Route path="/portal" element={<PortalShell />}>
                 <Route index element={<Navigate to="/portal/finds" replace />} />
                 <Route path="finds" element={<PortalFindsPage />} />

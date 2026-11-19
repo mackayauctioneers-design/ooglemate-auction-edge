@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { km } from "../format";
 
@@ -9,6 +9,7 @@ function aud(amount: number | null): string {
 import {
   approvedBuyers,
   buyerContact,
+  buyerPriceHistory,
   cautiousBuy,
   dealerContact,
   dealerUpdates,
@@ -21,7 +22,9 @@ import {
   thinkingBuy,
   tradeIn,
   yearBelowReference,
+  type BuyerPriceHistoryRow,
   type DealerUpdate,
+  type PriceOutcome,
   type ExampleAd,
 } from "./exampleData";
 
@@ -41,6 +44,7 @@ const STEPS = [
   { to: "/portal/wholesale/handover", label: "5 Handover" },
   { to: "/portal/wholesale/updates", label: "6 Status updates" },
   { to: "/portal/buyer-view", label: "7 Buyer view" },
+  { to: "/portal/buyer-prices", label: "8 Buyer price history" },
 ];
 
 const carTitle = `${tradeIn.year} ${tradeIn.make} ${tradeIn.model} ${tradeIn.badge}`;
@@ -519,7 +523,7 @@ export function WholesaleUpdatesPage() {
 }
 
 /* 7. Buyer-side view */
-export function WholesaleBuyerPage() {
+function BuyerChrome({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-white text-neutral-950">
       <header className="bg-neutral-950 text-white">
@@ -528,13 +532,23 @@ export function WholesaleBuyerPage() {
             <p className="text-sm font-semibold">Ooglecars wholesale · Buyer desk</p>
             <p className="text-xs text-neutral-300">Signed in as an approved buyer (example: Alex)</p>
           </div>
-          <Link to="/portal/wholesale/updates" className="text-xs text-neutral-300 underline-offset-2 hover:underline">Back to dealer preview</Link>
+          <nav aria-label="Buyer" className="flex items-center gap-1 text-sm">
+            <NavLink to="/portal/buyer-view" className={({ isActive }) => `px-3 py-1.5 ${isActive ? "bg-white text-neutral-950" : "text-neutral-300 hover:text-white"}`}>New cars</NavLink>
+            <NavLink to="/portal/buyer-prices" className={({ isActive }) => `px-3 py-1.5 ${isActive ? "bg-white text-neutral-950" : "text-neutral-300 hover:text-white"}`} data-testid="link-my-prices">My prices</NavLink>
+            <Link to="/portal/wholesale/updates" className="ml-3 text-xs text-neutral-400 underline-offset-2 hover:underline">Back to dealer preview</Link>
+          </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
-        <BuyerBody />
-      </main>
+      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
     </div>
+  );
+}
+
+export function WholesaleBuyerPage() {
+  return (
+    <BuyerChrome>
+      <BuyerBody />
+    </BuyerChrome>
   );
 }
 
@@ -576,10 +590,150 @@ function BuyerBody() {
               <Primary>Send price</Primary>
               <Secondary>Quick price {aud(cautiousBuy)}</Secondary>
             </div>
-            <p className="mt-2 text-xs text-neutral-500">One price per car. No countdown. The dealer sees every price and picks one.</p>
+            <p className="mt-2 text-xs text-neutral-500">One price per car. No countdown. The dealer sees every price and picks one. If you change your price, the earlier one stays in <Link to="/portal/buyer-prices" className="underline">My prices</Link>.</p>
           </Card>
         </div>
       </div>
     </Frame>
+  );
+}
+
+const SYDNEY = new Intl.DateTimeFormat("en-AU", {
+  timeZone: "Australia/Sydney",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+function sydney(iso: string): string {
+  return SYDNEY.format(new Date(iso)).replace(" am", "am").replace(" pm", "pm");
+}
+
+function sydneyDay(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+}
+
+const OUTCOME_LABEL: Record<PriceOutcome, string> = {
+  picked: "Picked",
+  not_picked: "Not picked",
+  open: "Still open",
+  dealer_kept: "Dealer kept the car",
+};
+
+function OutcomePill({ outcome }: { outcome: PriceOutcome }) {
+  switch (outcome) {
+    case "picked": return <Pill tone="green">Picked</Pill>;
+    case "open": return <Pill tone="amber">Still open</Pill>;
+    case "not_picked": return <Pill tone="plain">Not picked</Pill>;
+    case "dealer_kept": return <Pill tone="plain">Dealer kept the car</Pill>;
+  }
+}
+
+function HistoryRow({ row }: { row: BuyerPriceHistoryRow }) {
+  const latest = row.events[row.events.length - 1];
+  const earlier = row.events.slice(0, -1).reverse();
+  return (
+    <tr className="border-t border-neutral-200 align-top" data-testid="price-history-row">
+      <td className="py-3 pr-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{row.year} {row.make} {row.model} {row.badge}</span>
+          {row.franchise ? <Pill tone="blue">Franchise car</Pill> : null}
+        </div>
+        <p className="text-xs text-neutral-500">{km(row.km)} · {row.state} · {row.sellerLabel} · <span className="font-mono">{row.ref}</span></p>
+      </td>
+      <td className="py-3 pr-3 whitespace-nowrap">
+        <p className="text-lg font-semibold">{aud(latest.amount)}</p>
+        {row.events.length > 1 ? <p className="text-[11px] text-neutral-500">Changed {row.events.length - 1}×</p> : null}
+      </td>
+      <td className="py-3 pr-3 text-sm whitespace-nowrap">{sydney(latest.at)}{latest.note ? <p className="max-w-[14rem] whitespace-normal text-xs text-neutral-500">"{latest.note}"</p> : null}</td>
+      <td className="py-3 pr-3 text-xs">
+        {earlier.length === 0 ? <span className="text-neutral-400">No changes</span> : (
+          <ul className="space-y-1" data-testid="price-trail">
+            {earlier.map((e) => (
+              <li key={e.at} className="whitespace-nowrap">
+                <span className="text-neutral-500 line-through decoration-neutral-400">{aud(e.amount)}</span>
+                <span className="ml-1 text-neutral-500">{sydney(e.at)}</span>
+                {e.note ? <span className="block whitespace-normal text-neutral-500">"{e.note}"</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </td>
+      <td className="py-3 text-sm">
+        <OutcomePill outcome={row.outcome} />
+        {row.outcomeAt ? <p className="mt-1 text-[11px] text-neutral-500">{sydney(row.outcomeAt)}</p> : null}
+      </td>
+    </tr>
+  );
+}
+
+/* 8. Buyer price history (audit trail) */
+export function BuyerPriceHistoryPage() {
+  const [from, setFrom] = useState("2026-11-17");
+  const [to, setTo] = useState("2026-11-20");
+  const [outcome, setOutcome] = useState<"all" | PriceOutcome>("all");
+  const rows = useMemo(() => buyerPriceHistory.filter((row) => {
+    const day = sydneyDay(row.events[0].at);
+    const lastDay = sydneyDay(row.events[row.events.length - 1].at);
+    if (from && lastDay < from) return false;
+    if (to && day > to) return false;
+    if (outcome !== "all" && row.outcome !== outcome) return false;
+    return true;
+  }), [from, to, outcome]);
+  const counts = useMemo(() => {
+    const c: Record<PriceOutcome, number> = { picked: 0, not_picked: 0, open: 0, dealer_kept: 0 };
+    for (const r of rows) c[r.outcome] += 1;
+    return c;
+  }, [rows]);
+  return (
+    <BuyerChrome>
+      <Frame testId="buyer-price-history" title="My prices" lede="Every price you've given, on which car and when (Sydney time). If you changed a price, the earlier one stays here with its time. Nothing is overwritten.">
+        <div className="mb-4 flex flex-wrap items-end gap-3 border border-neutral-950 p-3" data-testid="price-history-filters">
+          <label className="text-sm">
+            <span className="block text-xs text-neutral-500">From</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 min-h-10 border border-neutral-950 px-2" />
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs text-neutral-500">To</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 min-h-10 border border-neutral-950 px-2" />
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs text-neutral-500">Outcome</span>
+            <select value={outcome} onChange={(e) => setOutcome(e.target.value as "all" | PriceOutcome)} className="mt-1 min-h-10 border border-neutral-950 bg-white px-2" data-testid="outcome-filter">
+              <option value="all">All outcomes</option>
+              {(Object.keys(OUTCOME_LABEL) as PriceOutcome[]).map((k) => <option key={k} value={k}>{OUTCOME_LABEL[k]}</option>)}
+            </select>
+          </label>
+          <div className="ml-auto flex flex-wrap gap-3 text-xs">
+            <span>{rows.length} cars</span>
+            <span className="text-[#117A3A]">{counts.picked} picked</span>
+            <span>{counts.not_picked} not picked</span>
+            <span className="text-[#9A6B00]">{counts.open} open</span>
+            <span>{counts.dealer_kept} kept by dealer</span>
+          </div>
+        </div>
+        <section className="border border-neutral-950 p-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-neutral-500">
+                <th className="pb-2 pr-3 font-semibold">Car</th>
+                <th className="pb-2 pr-3 font-semibold">Your price</th>
+                <th className="pb-2 pr-3 font-semibold">Given (Sydney time)</th>
+                <th className="pb-2 pr-3 font-semibold">Earlier prices</th>
+                <th className="pb-2 font-semibold">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => <HistoryRow key={row.ref} row={row} />)}
+            </tbody>
+          </table>
+          {rows.length === 0 ? <p className="py-6 text-center text-sm text-neutral-500">No prices match these filters.</p> : null}
+          <p className="mt-3 text-[11px] text-neutral-500">Only you see your prices. Dealers' names and numbers appear only on cars where you were picked, in the handover. Example data only.</p>
+        </section>
+      </Frame>
+    </BuyerChrome>
   );
 }
