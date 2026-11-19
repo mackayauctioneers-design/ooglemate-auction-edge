@@ -552,6 +552,43 @@ export function WholesaleBuyerPage() {
   );
 }
 
+function LockIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3" y="7" width="10" height="7" />
+      <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+    </svg>
+  );
+}
+
+function LockedPriceBox({ amount, message, compact = false }: { amount: number; message: string; compact?: boolean }) {
+  return (
+    <div data-testid="locked-price-box">
+      <div className={`flex flex-wrap items-end gap-2 ${compact ? "" : ""}`}>
+        <label>
+          {compact ? null : <span className="text-xs text-neutral-500">Price ($)</span>}
+          <input disabled value={new Intl.NumberFormat("en-AU").format(amount)} aria-label="Your price (locked)" className={`${compact ? "" : "mt-1"} block min-h-10 ${compact ? "w-28" : "w-44"} cursor-not-allowed border border-neutral-300 bg-neutral-100 px-3 text-neutral-500`} />
+        </label>
+        <button type="button" disabled className="inline-flex min-h-10 cursor-not-allowed items-center bg-neutral-300 px-3 text-sm font-medium text-neutral-600">{compact ? "Change" : "Send price"}</button>
+      </div>
+      <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"><LockIcon /> {message}</p>
+    </div>
+  );
+}
+
+function EditablePriceBox({ amount }: { amount: number }) {
+  const [value, setValue] = useState(new Intl.NumberFormat("en-AU").format(amount));
+  return (
+    <div data-testid="editable-price-box">
+      <div className="flex flex-wrap items-end gap-2">
+        <input value={value} onChange={(e) => setValue(e.target.value)} aria-label="Your price" className="block min-h-10 w-28 border border-neutral-950 px-3" />
+        <button type="button" className="inline-flex min-h-10 items-center bg-neutral-950 px-3 text-sm font-medium text-white hover:bg-neutral-800">Change</button>
+      </div>
+      <p className="mt-1.5 text-xs text-[#9A6B00]">Open · you can change this until the dealer picks</p>
+    </div>
+  );
+}
+
 function BuyerBody() {
   return (
     <Frame testId="wholesale-buyer" title="Buyer desk · franchise car" lede="What an approved buyer (for example Alex) sees. Your price is private. Other buyers never see it, and you never see theirs.">
@@ -561,7 +598,12 @@ function BuyerBody() {
             <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">2021 Toyota RAV4</span><Pill tone="blue">Franchise car</Pill></div>
             <p className="text-sm">{km(tradeIn.odometerKm)} · {tradeIn.state} · not priced</p>
           </div>
-          <div className="mt-2 p-3 text-sm text-neutral-500">2019 Toyota Hilux SR5 · 162,000 km · QLD · priced $24,100</div>
+          <div className="mt-2 p-3 text-sm text-neutral-500">2019 Toyota Hilux SR5 · 162,000 km · QLD · priced $24,100 · open</div>
+          <div className="mt-2 border-t border-neutral-200 p-3 text-sm text-neutral-500" data-testid="buyer-list-locked">
+            <div className="flex flex-wrap items-center gap-2"><span>2019 Mazda CX-5 Maxx Sport</span><Pill tone="blue">Franchise car</Pill></div>
+            <p>88,300 km · NSW · your price $24,800</p>
+            <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-neutral-950"><LockIcon /> Price locked, dealer has picked a buyer</p>
+          </div>
         </Card>
         <div className="space-y-4">
           <Card title="The car" right={<Pill tone="blue">Franchise car</Pill>}>
@@ -590,7 +632,10 @@ function BuyerBody() {
               <Primary>Send price</Primary>
               <Secondary>Quick price {aud(cautiousBuy)}</Secondary>
             </div>
-            <p className="mt-2 text-xs text-neutral-500">One price per car. No countdown. The dealer sees every price and picks one. If you change your price, the earlier one stays in <Link to="/portal/buyer-prices" className="underline">My prices</Link>.</p>
+            <p className="mt-2 text-xs text-neutral-500">One price per car. No countdown. The dealer sees every price and picks one. You can change your price until the dealer picks a buyer. The earlier price stays in <Link to="/portal/buyer-prices" className="underline">My prices</Link>.</p>
+          </Card>
+          <Card title="Your private price · 2019 Mazda CX-5 Maxx Sport (closed example)" right={<Pill tone="plain">Locked</Pill>}>
+            <LockedPriceBox amount={24800} message="Price locked, dealer has picked a buyer" />
           </Card>
         </div>
       </div>
@@ -662,9 +707,14 @@ function HistoryRow({ row }: { row: BuyerPriceHistoryRow }) {
           </ul>
         )}
       </td>
-      <td className="py-3 text-sm">
+      <td className="py-3 pr-3 text-sm">
         <OutcomePill outcome={row.outcome} />
         {row.outcomeAt ? <p className="mt-1 text-[11px] text-neutral-500">{sydney(row.outcomeAt)}</p> : null}
+      </td>
+      <td className="py-3 text-sm">
+        {row.outcome === "open"
+          ? <EditablePriceBox amount={latest.amount} />
+          : <LockedPriceBox compact amount={latest.amount} message={row.outcome === "dealer_kept" ? "Price locked, dealer kept the car" : "Price locked, dealer has picked a buyer"} />}
       </td>
     </tr>
   );
@@ -723,7 +773,8 @@ export function BuyerPriceHistoryPage() {
                 <th className="pb-2 pr-3 font-semibold">Your price</th>
                 <th className="pb-2 pr-3 font-semibold">Given (Sydney time)</th>
                 <th className="pb-2 pr-3 font-semibold">Earlier prices</th>
-                <th className="pb-2 font-semibold">Outcome</th>
+                <th className="pb-2 pr-3 font-semibold">Outcome</th>
+                <th className="pb-2 font-semibold">Price</th>
               </tr>
             </thead>
             <tbody>
@@ -731,7 +782,7 @@ export function BuyerPriceHistoryPage() {
             </tbody>
           </table>
           {rows.length === 0 ? <p className="py-6 text-center text-sm text-neutral-500">No prices match these filters.</p> : null}
-          <p className="mt-3 text-[11px] text-neutral-500">Only you see your prices. Dealers' names and numbers appear only on cars where you were picked, in the handover. Example data only.</p>
+          <p className="mt-3 text-[11px] text-neutral-500">Only you see this history. Other buyers never see your prices, and you never see theirs. Prices lock once the dealer picks a buyer or keeps the car. Dealers' names and numbers appear only on cars where you were picked, in the handover. Example data only.</p>
         </section>
       </Frame>
     </BuyerChrome>
