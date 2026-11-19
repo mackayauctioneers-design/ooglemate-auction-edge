@@ -309,7 +309,11 @@ export function WholesaleSendPage() {
             </div>
           </Card>
           <Card title="Your note to buyers (optional)">
-            <p className="border border-neutral-200 p-2 text-sm">{tradeIn.notes}</p>
+            <label className="block">
+              <span className="sr-only">Note to buyers</span>
+              <textarea readOnly rows={2} value={tradeIn.notes} className="block w-full border border-neutral-950 p-2 text-sm" data-testid="buyer-note" />
+            </label>
+            <p className="mt-1 text-xs text-neutral-600" data-testid="buyer-note-hint">Buyers see this note. Don't include your name or number.</p>
           </Card>
         </div>
       </div>
@@ -328,12 +332,33 @@ export function WholesaleHeldPage() {
           <p className="mt-1 text-sm">We found only {heldCar.freshExactYearAds} fresh 2016 Captiva LTZ AWD ad within the km range, and we need at least 2 to set a floor. Older or year-below ads don't count toward the floor.</p>
           <h3 className="mt-4 font-semibold">What we're doing</h3>
           <p className="mt-1 text-sm">A live search for 2016 Captiva LTZ AWD ads is running. This usually takes a few minutes. When it finds a floor, the car goes to your buyers and we tell you. If it doesn't, we'll tell you that too, and the car stays with you.</p>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4">
             <button type="button" disabled className="inline-flex min-h-11 cursor-not-allowed items-center bg-neutral-300 px-4 text-sm font-medium text-neutral-600">Send to wholesalers (needs a floor)</button>
-            <Secondary>Check the km and badge</Secondary>
           </div>
         </Card>
-        <Card title="Checking the details helps">
+        <Card title="Edit the km or badge" right={<Pill tone="plain">Editable</Pill>}>
+          <div data-testid="held-edit" className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs text-neutral-500">Odometer (km)</span>
+              <input defaultValue="141,200" className="mt-1 block min-h-11 w-full border border-neutral-950 px-3" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-neutral-500">Badge</span>
+              <select defaultValue="LTZ AWD" className="mt-1 block min-h-11 w-full border border-neutral-950 bg-white px-3">
+                <option>LTZ AWD</option>
+                <option>LX AWD</option>
+                <option>LS 2WD</option>
+                <option>Active 2WD</option>
+              </select>
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-neutral-500">Year stays as the plate year ({heldCar.title.slice(0, 4)}). Changing the km or badge reruns the guide from scratch.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Primary>Re-check the guide</Primary>
+            <span className="text-xs text-neutral-500">Preview: nothing is rerun.</span>
+          </div>
+        </Card>
+        <Card title="Checking the details helps" className="lg:col-span-2">
           <ul className="list-disc space-y-1 pl-5 text-sm">
             <li>Wrong badge or year is the most common reason a floor isn't found.</li>
             <li>If the odometer was mistyped, the km range will be off.</li>
@@ -530,7 +555,10 @@ function BuyerBody() {
             <p className="text-sm text-neutral-600">{km(tradeIn.odometerKm)} · {tradeIn.colour} · {tradeIn.transmission}</p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <Field label="Seller" value={`Franchise dealer, ${tradeIn.state}`} hint="Dealer name and number are shared only if you're picked." />
-              <Field label="Dealer's note" value={tradeIn.notes} />
+              <div data-testid="buyer-dealer-note">
+                <p className="text-xs text-neutral-500">Dealer's note</p>
+                <p className="border-l-4 border-neutral-950 bg-neutral-50 px-2 py-1 font-medium">"{tradeIn.notes}"</p>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
               <PhotoBox label="Front ¾ (example)" />
