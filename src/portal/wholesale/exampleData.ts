@@ -142,11 +142,11 @@ export interface DealerUpdate {
 }
 
 export const dealerUpdates: DealerUpdate[] = [
-  { at: "10:06am", rego: "EXA21P", car: "2021 Toyota RAV4 GX Hybrid 2WD", status: "prices", text: "3 prices in. Best is $30,500. Griefy hasn't priced yet. Pick one whenever you're ready." },
-  { at: "9:31am", rego: "EXA16H", car: "2016 Holden Captiva LTZ AWD", status: "held", text: "Held, no floor yet. Only 1 fresh 2016 ad matches, and we need 2. A live search is running. We'll send it as soon as it has a floor." },
-  { at: "9:02am", rego: "EXA21P", car: "2021 Toyota RAV4 GX Hybrid 2WD", status: "waiting", text: "Sent to 4 buyers with the Carbitrage guide. Waiting for prices." },
-  { at: "Yesterday 3:40pm", rego: "EXA19C", car: "2019 Mazda CX-5 Maxx Sport", status: "handover", text: "You picked Alex at $24,800. You both have each other's details to arrange pickup and payment." },
-  { at: "Yesterday 11:15am", rego: "EXA20T", car: "2020 Toyota Corolla Ascent Sport", status: "picked", text: "4 prices in. You picked Cam at $19,900." },
+  { at: "10:06am", rego: "EXA21P", car: "2021 RAV4 GX Hybrid", status: "prices", text: "3 prices in. Best $30,500." },
+  { at: "9:31am", rego: "EXA16H", car: "2016 Captiva LTZ", status: "held", text: "Held, no floor yet. Live search running." },
+  { at: "9:02am", rego: "EXA21P", car: "2021 RAV4 GX Hybrid", status: "waiting", text: "Sent to 4 buyers." },
+  { at: "Yesterday 3:40pm", rego: "EXA19C", car: "2019 CX-5 Maxx Sport", status: "handover", text: "Sold to Alex for $24,800." },
+  { at: "Yesterday 11:15am", rego: "EXA20T", car: "2020 Corolla Ascent Sport", status: "picked", text: "You picked Cam at $19,900." },
 ];
 
 export type PriceOutcome = "picked" | "not_picked" | "open" | "dealer_kept";
