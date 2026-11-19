@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import carbitrageLogo from "@/assets/carbitrage-logo.jpg";
+import carbitrageMarkLight from "@/assets/carbitrage-mark-light.png";
 import { ApiError, portalApi } from "./api";
 import type { Me } from "./types";
 import { PortalError, PortalLoading } from "./states";
@@ -65,7 +66,7 @@ export default function Shell() {
         <header className="border-b border-neutral-200" data-testid="quiet-header">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <img src={carbitrageLogo} alt="Carbitrage" className="h-6 w-auto object-contain" />
+              <img src={carbitrageMarkLight} alt="Carbitrage" className="h-6 w-auto object-contain" />
               <span className="truncate text-sm font-semibold">{yardName}</span>
             </div>
             <button type="button" onClick={signOut} className="shrink-0 text-xs text-neutral-400 hover:text-neutral-950">
