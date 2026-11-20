@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 /**
  * Carbitrage guide for a wholesale request. One place that turns the market engine's valuation
@@ -75,6 +76,8 @@ export interface Guide {
   comps: GuideAd[];
   generated_at: string;
   floor_basis: string | null;
+  /** Set when the floor did not come from the exact plate year, so the dealer is told plainly. */
+  floor_basis_note: string | null;
   year_below: { price_ex_gov: number; year: number; km: number; link: string | null; source?: string; note?: string } | null;
   outlier_ads: Array<{ price_ex_gov: number; year: number; km: number; link: string | null; gap_pct: number | null; note: string | null }>;
 }
@@ -115,6 +118,7 @@ export function mapGuide(v: EngineValuation, plateYear: number, now: Date): Guid
     comps,
     generated_at: now.toISOString(),
     floor_basis: v.floor_basis ?? null,
+    floor_basis_note: v.floor_basis && v.floor_basis !== "exact_year" ? (v.floor_basis_note ?? "The floor did not come from the exact plate year.") : null,
     year_below: v.year_below ?? null,
     outlier_ads: (v.outlier_ads ?? [])
       .filter((o) => o.sets_floor_if_trusted !== false)
@@ -126,6 +130,74 @@ export function mapGuide(v: EngineValuation, plateYear: number, now: Date): Guid
 export interface MarketApiConfig {
   baseUrl: string;
   keyFile: string;
+  /** Where answers are kept between restarts, so the key's 60-an-hour limit is not burned on repeat lookups. */
+  cacheFile?: string;
+}
+
+/** The public /api/v1/valuation answer, as far as the guide needs it. */
+interface ApiValuation {
+  status?: string;
+  floor?: number | null;
+  floor_car?: { title?: string; badge?: string; price_ex_gov: number; year: number; km: number; state?: string | null; url?: string | null; drivetrain?: string | null } | null;
+  floor_comps?: Array<{ title?: string; badge?: string; price_ex_gov: number; year: number; km: number; state?: string | null; url?: string | null; drivetrain?: string | null }>;
+  buying_view?: { thinking?: number | null; cautious?: number | null } | null;
+  confidence?: string | { score: number; label: string };
+  provisional?: boolean;
+  needs_live_search?: boolean;
+  floor_basis?: string | null;
+  floor_basis_note?: string | null;
+  quality_flags?: { weak_floor_reasons?: string[] } | null;
+  year_below?: EngineValuation["year_below"];
+  outlier_ads?: EngineValuation["outlier_ads"];
+  engine?: string;
+  job_id?: string;
+}
+
+const CONFIDENCE_SCORE: Record<string, number> = { high: 85, medium: 60, low: 30 };
+
+/** Turns the public API answer into the value_car shape that mapGuide reads. The API has no km-adjusted figures, so those stay null. */
+export function fromApiValuation(a: ApiValuation | EngineValuation): EngineValuation {
+  if (!("floor_comps" in a) && !("buying_view" in a)) return a as EngineValuation;
+  const v = a as ApiValuation;
+  const ad = (x: NonNullable<ApiValuation["floor_car"]>) => ({
+    title: x.title ?? null, year: x.year, badge: x.badge ?? null, km: x.km, price_ex_gov: x.price_ex_gov, km_adjusted_price: null,
+    state: x.state ?? null, link: x.url ?? null, drivetrain: x.drivetrain ?? null, match: "exact_spec",
+  });
+  const label = typeof v.confidence === "string" ? v.confidence : v.confidence?.label ?? "low";
+  return {
+    status: v.status,
+    floor_car: v.floor_car ? ad(v.floor_car) : null,
+    comps: (v.floor_comps ?? []).map(ad),
+    buy_target: v.buying_view?.cautious ?? null,
+    max_buy: v.buying_view?.thinking ?? null,
+    confidence: typeof v.confidence === "object" && v.confidence ? v.confidence : { score: CONFIDENCE_SCORE[label] ?? 30, label },
+    provisional: v.provisional,
+    needs_live_search: v.needs_live_search,
+    floor_basis: v.floor_basis ?? null,
+    floor_basis_note: v.floor_basis_note ?? (v.floor_basis && v.floor_basis !== "exact_year" ? (v.quality_flags?.weak_floor_reasons?.[0] ?? null) : null),
+    year_below: v.year_below ?? null,
+    outlier_ads: v.outlier_ads ?? [],
+    engine: v.engine,
+    job_id: v.job_id,
+  };
+}
+
+const CACHE_TTL_MS = 6 * 3600_000;
+const MAX_CALLS_PER_HOUR = 20; // well under the key's 60 an hour
+const memory = new Map<string, { at: number; raw: unknown }>();
+const callTimes: number[] = [];
+
+function readCache(file: string | undefined): Record<string, { at: number; raw: unknown }> {
+  if (!file || !existsSync(file)) return {};
+  try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, { at: number; raw: unknown }>; } catch { return {}; }
+}
+
+function writeCache(file: string | undefined, key: string, entry: { at: number; raw: unknown }): void {
+  if (!file) return;
+  const all = readCache(file);
+  all[key] = entry;
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(all), { mode: 0o600 });
 }
 
 export interface CarSpec {
@@ -150,14 +222,29 @@ export interface ValuationResult {
  * The dealer's own ad is excluded by passing the ad link or price with the call, when known.
  */
 export async function fetchValuation(car: CarSpec, cfg: MarketApiConfig | null, ownAd?: { link?: string; price?: number }): Promise<ValuationResult> {
-  if (cfg) {
+  // Cars before 2020 start a paid live Carsales search on this key's route, so the preview holds them instead of asking.
+  if (cfg && car.year >= 2020) {
+    const cacheKey = [car.year, car.make, car.model, car.badge, car.km, car.state, ownAd?.link ?? "", ownAd?.price ?? ""].join("|").toLowerCase();
+    const now = Date.now();
+    const hit = memory.get(cacheKey) ?? readCache(cfg.cacheFile)[cacheKey];
+    if (hit && now - hit.at < CACHE_TTL_MS) {
+      memory.set(cacheKey, hit);
+      return { valuation: fromApiValuation(hit.raw as ApiValuation), source: "market_api" };
+    }
+    while (callTimes.length && now - callTimes[0] > 3600_000) callTimes.shift();
+    if (callTimes.length >= MAX_CALLS_PER_HOUR) throw new Error("market_api_preview_call_cap");
+    callTimes.push(now);
     const key = readFileSync(cfg.keyFile, "utf8").trim();
     const qs = new URLSearchParams({ year: String(car.year), make: car.make, model: car.model, badge: car.badge, km: String(car.km), state: car.state });
     if (ownAd?.link) qs.set("link", ownAd.link);
     if (ownAd?.price) qs.set("price", String(ownAd.price));
     const res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/api/v1/valuation?${qs.toString()}`, { headers: { authorization: `Bearer ${key}`, accept: "application/json" } });
     if (!res.ok) throw new Error(`market_api_${res.status}`);
-    return { valuation: (await res.json()) as EngineValuation, source: "market_api" };
+    const raw = (await res.json()) as ApiValuation;
+    const entry = { at: now, raw };
+    memory.set(cacheKey, entry);
+    writeCache(cfg.cacheFile, cacheKey, entry);
+    return { valuation: fromApiValuation(raw), source: "market_api" };
   }
   const file = FIXTURES[car.fixture];
   if (!file) throw new Error("unknown_fixture");

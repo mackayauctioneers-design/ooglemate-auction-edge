@@ -45,7 +45,7 @@ const marketKeyFile = process.env.CARBITRAGE_MARKET_API_KEY_FILE?.trim();
 const wholesale = flags.preview
   ? createWholesale({
       pool: new pg.Pool({ connectionString: migrateUrl, max: 4 }),
-      market: marketUrl && marketKeyFile ? { baseUrl: marketUrl, keyFile: marketKeyFile } : null,
+      market: marketUrl && marketKeyFile ? { baseUrl: marketUrl, keyFile: marketKeyFile, cacheFile: process.env.CARBITRAGE_MARKET_API_CACHE_FILE?.trim() || undefined } : null,
       now: () => new Date(),
     })
   : null;

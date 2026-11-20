@@ -261,6 +261,7 @@ export function GuideBlock({ guide, car, forBuyer = false }: { guide: Guide; car
         <p className="mt-1 text-4xl font-semibold tracking-tight">{aud(guide.floor_dollars)}</p>
         <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-neutral-500"><span>{floor.title} · {km(floor.km)}{floor.state ? ` · ${floor.state}` : ""}</span><ViewAd url={floor.link ?? undefined} /></p>
         {guide.provisional ? <p className="mt-2 text-xs" style={{ color: AMBER }}>Provisional, not enough evidence yet.</p> : null}
+        {guide.floor_basis_note ? <p className="mt-2 text-xs" style={{ color: AMBER }} data-testid="floor-basis-note">{guide.floor_basis_note}</p> : null}
       </Section>
       <div className="grid grid-cols-2 gap-6">
         <Section>
@@ -303,7 +304,7 @@ export function GuideBlock({ guide, car, forBuyer = false }: { guide: Guide; car
       </Section>
       <div className="flex items-center justify-between gap-4">
         <HowWeGotThis>
-          <p>The floor is the cheapest genuine dealer ad for the same model and badge, plate year {car.year} only, up to {km(kmCap)} ({km(car.km)} + 15,000 km), before government charges.</p>
+          <p>The floor is the cheapest genuine dealer ad for the same model and badge on plate year {car.year}, up to {km(kmCap)} ({km(car.km)} + 15,000 km), before government charges. If there are fewer than 2 fresh cars on that year, the engine may use a neighbouring year and says so under the floor.</p>
           <p>Ads must be fresh: dealer sites within 2 days, feeds within 7. We need at least 2 fresh cars, or we run a live search.</p>
           <p>One cheap ad well under the rest doesn't set the floor on its own unless another ad backs it up. We show it to you as a possible buy instead.</p>
           {floor.km_adjusted_price ? <p>Cautious buy is adjusted for km from the floor car (km-adjusted floor {aud(floor.km_adjusted_price)}).</p> : null}

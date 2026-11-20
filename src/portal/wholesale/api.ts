@@ -16,6 +16,7 @@ export interface Guide {
   comps: GuideAd[];
   generated_at: string;
   floor_basis: string | null;
+  floor_basis_note: string | null;
   year_below: { price_ex_gov: number; year: number; km: number; link: string | null } | null;
   outlier_ads: Array<{ price_ex_gov: number; year: number; km: number; link: string | null; gap_pct: number | null; note: string | null }>;
 }

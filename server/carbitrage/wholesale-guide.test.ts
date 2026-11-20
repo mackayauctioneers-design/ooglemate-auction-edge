@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { mapGuide, type EngineValuation } from "./wholesale-guide.ts";
+import { fromApiValuation, mapGuide, type EngineValuation } from "./wholesale-guide.ts";
 
 const load = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
 const NOW = new Date("2026-11-20T01:10:25.000Z");
@@ -28,4 +28,14 @@ test("the year-below car is reference only and never in the comps", () => {
 test("no floor means no guide, so nothing can be sent", () => {
   assert.equal(mapGuide(load("wholesale-captiva-held.json"), 2016, NOW), null);
   assert.equal(mapGuide({ status: "pending", job_id: "abc12345" } as EngineValuation, 2016, NOW), null);
+});
+
+test("the live API answer maps to the same guide figures as value_car (Macan, 20 Nov)", () => {
+  const guide = mapGuide(fromApiValuation(load("wholesale-macan-api-live-20261120.json")), 2022, NOW);
+  assert.ok(guide);
+  assert.equal(guide.floor_dollars, 82990);
+  assert.equal(guide.thinking, 71400);
+  assert.equal(guide.cautious, 70400);
+  assert.equal(guide.year_below?.year, 2021);
+  assert.ok(guide.comps.length > 0 && guide.comps.every((c) => c.year === 2022 && c.link !== guide.floor_car.link));
 });
