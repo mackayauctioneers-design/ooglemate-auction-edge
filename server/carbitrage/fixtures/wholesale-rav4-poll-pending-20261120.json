@@ -1,0 +1,13 @@
+{
+ "job_id": "ls_9ba2e53b497f",
+ "live_status": "running",
+ "route": "live",
+ "route_version": "live-route-20261120.1",
+ "age_s": 7,
+ "status": "pending",
+ "needs_live_search": true,
+ "eta_seconds": 155,
+ "poll_after_s": 20,
+ "message": "Still searching live Carsales dealer ads. No figures yet.",
+ "elapsed_s": 0.0
+}

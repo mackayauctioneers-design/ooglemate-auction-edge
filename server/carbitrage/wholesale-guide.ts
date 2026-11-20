@@ -79,6 +79,10 @@ export interface Guide {
   /** Set when the floor did not come from the exact plate year, so the dealer is told plainly. */
   floor_basis_note: string | null;
   year_below: { price_ex_gov: number; year: number; km: number; link: string | null; source?: string; note?: string } | null;
+  /** Where these figures came from: live engine, a recorded engine run, or a sample. Shown on the guide. */
+  source?: "market_api" | "recorded_fixture" | "sample_fixture";
+  /** Live Carsales check behind the pool answer: checking (figures may still change), done, or gave_up. */
+  live_check?: { state: "checking" | "done" | "gave_up"; eta_seconds: number | null; poll_after_s: number } | null;
   outlier_ads: Array<{ price_ex_gov: number; year: number; km: number; link: string | null; gap_pct: number | null; note: string | null }>;
 }
 
@@ -119,7 +123,8 @@ export function mapGuide(v: EngineValuation, plateYear: number, now: Date): Guid
     generated_at: now.toISOString(),
     floor_basis: v.floor_basis ?? null,
     floor_basis_note: v.floor_basis && v.floor_basis !== "exact_year" ? (v.floor_basis_note ?? "The floor did not come from the exact plate year.") : null,
-    year_below: v.year_below ?? null,
+    // When the floor itself is the year-below car, the reference line would only repeat it.
+    year_below: v.year_below && v.year_below.link && v.year_below.link === floorAd.link ? null : (v.year_below ?? null),
     outlier_ads: (v.outlier_ads ?? [])
       .filter((o) => o.sets_floor_if_trusted !== false)
       .slice(0, 2)
@@ -128,6 +133,8 @@ export function mapGuide(v: EngineValuation, plateYear: number, now: Date): Guid
 }
 
 export interface MarketApiConfig {
+  /** Serve only what is already cached, however old. Never calls the engine. */
+  cacheOnly?: boolean;
   baseUrl: string;
   keyFile: string;
   /** Where answers are kept between restarts, so the key's 60-an-hour limit is not burned on repeat lookups. */
@@ -151,6 +158,13 @@ interface ApiValuation {
   outlier_ads?: EngineValuation["outlier_ads"];
   engine?: string;
   job_id?: string;
+  /** Dealer keys: the pool answer comes straight away and a live Carsales check runs behind it. */
+  live_pending?: boolean;
+  final?: boolean;
+  poll_url?: string;
+  live_status?: string;
+  eta_seconds?: number;
+  poll_after_s?: number;
 }
 
 const CONFIDENCE_SCORE: Record<string, number> = { high: 85, medium: 60, low: 30 };
@@ -174,7 +188,8 @@ export function fromApiValuation(a: ApiValuation | EngineValuation): EngineValua
     provisional: v.provisional,
     needs_live_search: v.needs_live_search,
     floor_basis: v.floor_basis ?? null,
-    floor_basis_note: v.floor_basis_note ?? (v.floor_basis && v.floor_basis !== "exact_year" ? (v.quality_flags?.weak_floor_reasons?.[0] ?? null) : null),
+    floor_basis_note: v.floor_basis_note ?? (v.floor_basis && v.floor_basis !== "exact_year"
+      ? (v.quality_flags?.weak_floor_reasons?.find((r) => /year below|need 2/i.test(r)) ?? v.quality_flags?.weak_floor_reasons?.[0] ?? null) : null),
     year_below: v.year_below ?? null,
     outlier_ads: v.outlier_ads ?? [],
     engine: v.engine,
@@ -184,15 +199,17 @@ export function fromApiValuation(a: ApiValuation | EngineValuation): EngineValua
 
 const CACHE_TTL_MS = 6 * 3600_000;
 const MAX_CALLS_PER_HOUR = 20; // well under the key's 60 an hour
-const memory = new Map<string, { at: number; raw: unknown }>();
+const LIVE_CHECK_GIVE_UP_MS = 10 * 60_000;
+interface CacheEntry { at: number; raw: unknown; poll?: { firstAt: number; lastPollAt: number; etaSeconds: number | null; pollAfterS: number } }
+const memory = new Map<string, CacheEntry>();
 const callTimes: number[] = [];
 
-function readCache(file: string | undefined): Record<string, { at: number; raw: unknown }> {
+function readCache(file: string | undefined): Record<string, CacheEntry> {
   if (!file || !existsSync(file)) return {};
-  try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, { at: number; raw: unknown }>; } catch { return {}; }
+  try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, CacheEntry>; } catch { return {}; }
 }
 
-function writeCache(file: string | undefined, key: string, entry: { at: number; raw: unknown }): void {
+function writeCache(file: string | undefined, key: string, entry: CacheEntry): void {
   if (!file) return;
   const all = readCache(file);
   all[key] = entry;
@@ -205,19 +222,54 @@ export interface CarSpec {
 }
 
 const FIXTURES: Record<string, string> = {
-  "macan-recorded": "wholesale-macan-recorded-20261120.json",
+  "macan-recorded": "wholesale-macan-api-post-shaz-fix-20261120.json",
   "rav4-sample": "wholesale-rav4-sample.json",
   "captiva-held": "wholesale-captiva-held.json",
 };
 
+/** A live Carsales check is still running behind the pool answer. */
+export interface LivePending { jobId: string | null; etaSeconds: number | null; pollAfterS: number; timedOut: boolean }
+
 export interface ValuationResult {
   valuation: EngineValuation;
   source: "market_api" | "recorded_fixture" | "sample_fixture";
+  livePending?: LivePending | null;
+  /** The engine's own route for this answer, e.g. db_instant or live_cached. */
+  route?: string | null;
+}
+
+function isPending(raw: unknown): boolean {
+  const r = raw as ApiValuation;
+  return r.live_pending === true && r.final !== true;
+}
+
+function resultFrom(entry: CacheEntry, now: number): ValuationResult {
+  const raw = entry.raw as ApiValuation & { route?: string };
+  let livePending: LivePending | null = null;
+  if (isPending(raw)) {
+    livePending = {
+      jobId: raw.job_id ?? null,
+      etaSeconds: entry.poll?.etaSeconds ?? raw.eta_seconds ?? null,
+      pollAfterS: entry.poll?.pollAfterS ?? raw.poll_after_s ?? 20,
+      timedOut: now - (entry.poll?.firstAt ?? entry.at) > LIVE_CHECK_GIVE_UP_MS,
+    };
+  }
+  return { valuation: fromApiValuation(raw), source: "market_api", livePending, route: raw.route ?? null };
+}
+
+function takeCall(): void {
+  const now = Date.now();
+  while (callTimes.length && now - callTimes[0] > 3600_000) callTimes.shift();
+  if (callTimes.length >= MAX_CALLS_PER_HOUR) throw new Error("market_api_preview_call_cap");
+  callTimes.push(now);
 }
 
 /**
  * Live: read-only GET /api/v1/valuation on the Carbitrage Market API, with the key read from a file at request time
  * (never logged, never returned). Needs CARBITRAGE_MARKET_API_URL and CARBITRAGE_MARKET_API_KEY_FILE.
+ * Dealer keys get the pool answer straight away plus live_pending/job_id/poll_url while Carsales is checked live. That
+ * pool answer is returned and marked; poll_url is then polled no faster than the engine asks (poll_after_s, never under
+ * 20 s), counted against the same self-cap, until the answer is final.
  * Otherwise the preview uses the recorded or sample engine output for the test car.
  * The dealer's own ad is excluded by passing the ad link or price with the call, when known.
  */
@@ -226,28 +278,60 @@ export async function fetchValuation(car: CarSpec, cfg: MarketApiConfig | null, 
   if (cfg && car.year >= 2020) {
     const cacheKey = [car.year, car.make, car.model, car.badge, car.km, car.state, ownAd?.link ?? "", ownAd?.price ?? ""].join("|").toLowerCase();
     const now = Date.now();
-    const hit = memory.get(cacheKey) ?? readCache(cfg.cacheFile)[cacheKey];
-    if (hit && now - hit.at < CACHE_TTL_MS) {
+    let hit = memory.get(cacheKey) ?? readCache(cfg.cacheFile)[cacheKey];
+    if (hit && isPending(hit.raw) && !cfg.cacheOnly) hit = await pollLive(cfg, cacheKey, hit);
+    if (hit && (cfg.cacheOnly || now - hit.at < CACHE_TTL_MS)) {
       memory.set(cacheKey, hit);
-      return { valuation: fromApiValuation(hit.raw as ApiValuation), source: "market_api" };
+      return resultFrom(hit, now);
     }
-    while (callTimes.length && now - callTimes[0] > 3600_000) callTimes.shift();
-    if (callTimes.length >= MAX_CALLS_PER_HOUR) throw new Error("market_api_preview_call_cap");
-    callTimes.push(now);
-    const key = readFileSync(cfg.keyFile, "utf8").trim();
-    const qs = new URLSearchParams({ year: String(car.year), make: car.make, model: car.model, badge: car.badge, km: String(car.km), state: car.state });
-    if (ownAd?.link) qs.set("link", ownAd.link);
-    if (ownAd?.price) qs.set("price", String(ownAd.price));
-    const res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/api/v1/valuation?${qs.toString()}`, { headers: { authorization: `Bearer ${key}`, accept: "application/json" } });
-    if (!res.ok) throw new Error(`market_api_${res.status}`);
-    const raw = (await res.json()) as ApiValuation;
-    const entry = { at: now, raw };
-    memory.set(cacheKey, entry);
-    writeCache(cfg.cacheFile, cacheKey, entry);
-    return { valuation: fromApiValuation(raw), source: "market_api" };
+    // Cache-only: never call the engine, even when a cached answer has aged out or is missing. Falls through to the fixtures.
+    if (!cfg.cacheOnly) return await liveLookup(cfg, car, ownAd, cacheKey);
   }
   const file = FIXTURES[car.fixture];
   if (!file) throw new Error("unknown_fixture");
-  const raw = JSON.parse(readFileSync(new URL(`./fixtures/${file}`, import.meta.url), "utf8")) as EngineValuation;
+  const raw = fromApiValuation(JSON.parse(readFileSync(new URL(`./fixtures/${file}`, import.meta.url), "utf8")) as EngineValuation);
   return { valuation: raw, source: car.fixture === "macan-recorded" ? "recorded_fixture" : "sample_fixture" };
+}
+
+async function apiGet(cfg: MarketApiConfig, pathAndQuery: string): Promise<unknown> {
+  const key = readFileSync(cfg.keyFile, "utf8").trim();
+  const res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}${pathAndQuery}`, { headers: { authorization: `Bearer ${key}`, accept: "application/json" } });
+  if (!res.ok) throw new Error(`market_api_${res.status}`);
+  return res.json();
+}
+
+/** One poll of the live check, only when the engine's own wait has passed. Returns the entry, updated when something changed. */
+async function pollLive(cfg: MarketApiConfig, cacheKey: string, entry: CacheEntry): Promise<CacheEntry> {
+  const raw = entry.raw as ApiValuation;
+  if (!raw.poll_url || !raw.poll_url.startsWith("/api/v1/valuation/live/")) return entry;
+  const now = Date.now();
+  const poll = entry.poll ?? { firstAt: entry.at, lastPollAt: entry.at, etaSeconds: raw.eta_seconds ?? null, pollAfterS: raw.poll_after_s ?? 20 };
+  if (now - poll.lastPollAt < Math.max(poll.pollAfterS, 20) * 1000) return entry;
+  if (now - poll.firstAt > LIVE_CHECK_GIVE_UP_MS) return { ...entry, poll };
+  try { takeCall(); } catch { return { ...entry, poll }; }
+  let answer: ApiValuation & { poll_after_s?: number; eta_seconds?: number };
+  try { answer = (await apiGet(cfg, raw.poll_url)) as typeof answer; } catch { return { ...entry, poll: { ...poll, lastPollAt: now } }; }
+  let next: CacheEntry;
+  if (answer.status === "pending" || answer.live_status === "queued" || answer.live_status === "running") {
+    next = { ...entry, poll: { ...poll, lastPollAt: now, etaSeconds: answer.eta_seconds ?? null, pollAfterS: answer.poll_after_s ?? poll.pollAfterS } };
+  } else {
+    // Final answer from the live check replaces the pool answer.
+    next = { at: now, raw: { ...answer, final: true } };
+  }
+  memory.set(cacheKey, next);
+  writeCache(cfg.cacheFile, cacheKey, next);
+  return next;
+}
+
+async function liveLookup(cfg: MarketApiConfig, car: CarSpec, ownAd: { link?: string; price?: number } | undefined, cacheKey: string): Promise<ValuationResult> {
+  const now = Date.now();
+  takeCall();
+  const qs = new URLSearchParams({ year: String(car.year), make: car.make, model: car.model, badge: car.badge, km: String(car.km), state: car.state });
+  if (ownAd?.link) qs.set("link", ownAd.link);
+  if (ownAd?.price) qs.set("price", String(ownAd.price));
+  const raw = (await apiGet(cfg, `/api/v1/valuation?${qs.toString()}`)) as ApiValuation;
+  const entry: CacheEntry = { at: now, raw, ...(isPending(raw) ? { poll: { firstAt: now, lastPollAt: now, etaSeconds: raw.eta_seconds ?? null, pollAfterS: raw.poll_after_s ?? 20 } } : {}) };
+  memory.set(cacheKey, entry);
+  writeCache(cfg.cacheFile, cacheKey, entry);
+  return resultFrom(entry, now);
 }

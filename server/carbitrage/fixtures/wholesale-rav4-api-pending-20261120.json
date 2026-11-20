@@ -1,0 +1,179 @@
+{
+ "query": null,
+ "vehicle": {
+  "make": "Toyota",
+  "model": "RAV4",
+  "badge": "GX",
+  "year": 2021,
+  "km": 58400,
+  "state": "NSW"
+ },
+ "source": "Carbitrage",
+ "data_source": "own_market_data",
+ "engine": "ownfloor-20261120.15",
+ "as_of": "2026-11-20 12:47 AEDT",
+ "fallback_reason": "",
+ "status": "ok",
+ "floor": 36090,
+ "floor_label": "own market data floor (low confidence, 2 comps)",
+ "widen_note": null,
+ "floor_car": {
+  "title": "2020 Toyota RAV4 GX Hybrid 2WD",
+  "make": "Toyota",
+  "model": "RAV4",
+  "badge": "GX Hybrid 2WD",
+  "price": 36090,
+  "price_ex_gov": 36090,
+  "advertised": null,
+  "drive_away": false,
+  "drive_away_adjusted": false,
+  "year": 2020,
+  "km": 31610,
+  "state": null,
+  "seller_type": "dealer",
+  "url": "https://www.carsales.com.au/cars/details/2020-toyota-rav4-gx-auto-efour/OAG-AD-26459339/",
+  "source": "Carbitrage",
+  "drivetrain": "drivetrain not stated",
+  "comp_source": "carsales",
+  "price_basis": "as advertised"
+ },
+ "floor_comps": [
+  {
+   "title": "2020 Toyota RAV4 GX Hybrid 2WD",
+   "make": "Toyota",
+   "model": "RAV4",
+   "badge": "GX Hybrid 2WD",
+   "price": 36090,
+   "price_ex_gov": 36090,
+   "advertised": null,
+   "drive_away": false,
+   "drive_away_adjusted": false,
+   "year": 2020,
+   "km": 31610,
+   "state": null,
+   "seller_type": "dealer",
+   "url": "https://www.carsales.com.au/cars/details/2020-toyota-rav4-gx-auto-efour/OAG-AD-26459339/",
+   "source": "Carbitrage",
+   "drivetrain": "drivetrain not stated",
+   "comp_source": "carsales",
+   "price_basis": "as advertised"
+  },
+  {
+   "title": "2020 Toyota RAV4 GX Hybrid 2WD",
+   "make": "Toyota",
+   "model": "RAV4",
+   "badge": "GX Hybrid 2WD",
+   "price": 36850,
+   "price_ex_gov": 36850,
+   "advertised": null,
+   "drive_away": false,
+   "drive_away_adjusted": false,
+   "year": 2020,
+   "km": 65059,
+   "state": null,
+   "seller_type": "dealer",
+   "url": "https://www.carsales.com.au/cars/details/2020-toyota-rav4-gx-auto-efour/OAG-AD-26515300/",
+   "source": "Carbitrage",
+   "drivetrain": "drivetrain not stated",
+   "comp_source": "carsales",
+   "price_basis": "as advertised"
+  }
+ ],
+ "guide_band_low": 30700,
+ "guide_band_high": 33200,
+ "guide_note": "8-15% under the floor. A guide, not a price.",
+ "buying_view": {
+  "retail_at_your_km": 35925,
+  "thinking": 28900,
+  "thinking_words": "around $28-29k",
+  "cautious": 27900,
+  "cautious_words": "around $27-28k",
+  "method": "median of floor car + next 1 moved to 58,400 km = $35,925; retail capped at the floor car moved to 58,400 km ($34,640; its ask is $36,090), less $5,732 margin of safety = thinking; cautious (no photos) = 95% of thinking, $500-$1,000 below it",
+  "provisional": false
+ },
+ "quality_flags": {
+  "weak_floor": true,
+  "weak_floor_reasons": [
+   "thin evidence: only 2 comparable car(s)",
+   "Only 1 2021 car (need 2), so the floor is the cheapest 2020 car (one plate year below), not a 2021 price",
+   "newer cars shown as evidence only, they never set the floor: 2022 65,416 km $34,490; 2023 63,064 km $36,590; 2021 69,393 km $36,969",
+   "only 2 comparable ad(s): treat the floor as a range $32,500-$36,850; the real market floor may sit below the cheapest ad we hold"
+  ],
+  "few_dealer_comps": true,
+  "n_dealer_comps_found": 2,
+  "n_credible_comps": 2,
+  "n_engine_confirmed": 0,
+  "confidence": "low",
+  "anomaly": false,
+  "needs_live_search": false,
+  "coverage_reason": null
+ },
+ "comp_count": 2,
+ "confidence": "low",
+ "evidence_note": "2 comparable dealer cars, confidence low: thin evidence: only 2 comparable car(s); Only 1 2021 car (need 2), so the floor is the cheapest 2020 car (one plate year below), not a 2021 price; newer cars shown as evidence only, they never set the floor: 2022 65,416 km $34,490; 2023 63,064 km $36,590; 2021 69,393 km $36,969; only 2 comparable ad(s): treat the floor as a range $32,500-$36,850; the real market floor may sit below the cheapest ad we hold",
+ "message": "Here's the 2021 Rav4 GX Hybrid 2WD on 58,400 km. The floor car is a 2020 GX Hybrid 2WD on only 31,610 km, at $36,090: https://www.carsales.com.au/cars/details/2020-toyota-rav4-gx-auto-efour/OAG-AD-26459339/. The next cars up are $36,850. Allowing for the extra km on yours, I'd be around $28-29k. To be on the cautious side without seeing photos, probably around $27-28k. By plate year: '20 plates from $36,090 (2 comps); '21 plates: none in our data. Only 1 2021 car (need 2), so the floor is the cheapest 2020 car (one plate year below), not a 2021 price. Only 2 comparable dealer cars in Carbitrage, so the evidence is thin; treat this as rough. Rough range $32,500-$36,850. You pick your number.",
+ "search_window": {
+  "years": [
+   2020
+  ],
+  "years_rule": "2020 and any newer year, same shape",
+  "km_min": 0,
+  "km_max": 73400,
+  "km_widened": false,
+  "states": "Australia-wide (live retail)"
+ },
+ "method": "Our own market data: live dealer asks from dealer sites and Carsales (last 21 days), private sellers, auctions and unlabelled Gumtree left out. Same make/model and badge (engine checked where the ad shows it), plate year minus one and any newer year (same shape only), 0 to km+15,000, 2WD and AWD not split (each comp is labelled), cheapest credible dealer car = floor, ex-government charges. A retail asking price, not a buy price. You pick your number.",
+ "data_built": "2026-11-20T00:50:07.887636+00:00",
+ "floor_by_year": {
+  "floor_year": 2021,
+  "same_year_only": false,
+  "years": [
+   {
+    "year": 2020,
+    "from": 36090,
+    "n": 2,
+    "url": "https://www.carsales.com.au/cars/details/2020-toyota-rav4-gx-auto-efour/OAG-AD-26459339/",
+    "km": 31610
+   }
+  ],
+  "skipped": [
+   {
+    "year": 2021,
+    "why": "no comparable car that year"
+   }
+  ],
+  "line": "'20 plates from $36,090 (2 comps); '21 plates: none in our data",
+  "generation_checked": true,
+  "generation_start": 2019,
+  "basis": "cheapest genuine comparable per plate year, same comps as the floor (ex-gov)"
+ },
+ "floor_by_year_line": "'20 plates from $36,090 (2 comps); '21 plates: none in our data",
+ "needs_live_search": false,
+ "coverage_reason": null,
+ "provisional": false,
+ "excluded_comps": [],
+ "year_below": {
+  "price_ex_gov": 36090,
+  "year": 2020,
+  "km": 31610,
+  "link": "https://www.carsales.com.au/cars/details/2020-toyota-rav4-gx-auto-efour/OAG-AD-26459339/",
+  "source": "Carbitrage",
+  "note": "reference only, one plate year below: never sets the floor or the buy figures"
+ },
+ "floor_basis": "year_below_fallback",
+ "floor_basis_note": "Only 1 2021 car (need 2), so the floor is the cheapest 2020 car (one plate year below), not a 2021 price",
+ "route": "db_instant",
+ "route_reason": [
+  "few_comps"
+ ],
+ "route_version": "live-route-20261120.1",
+ "live_pending": true,
+ "final": false,
+ "live_status": "queued",
+ "job_id": "ls_9ba2e53b497f",
+ "eta_seconds": 170,
+ "poll_url": "/api/v1/valuation/live/ls_9ba2e53b497f",
+ "live_cache_hours": 6.0,
+ "live_note": "Pool-only valuation from Carbitrage's own market data. A live Carsales search is running in the background and can only improve it. Ask again in about 3 minutes, or poll poll_url.",
+ "elapsed_s": 0.23
+}

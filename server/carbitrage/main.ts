@@ -42,13 +42,26 @@ const port = createPgPort(databaseUrl);
 // optional read-only GET to the Carbitrage Market API, and only when both settings below are present.
 const marketUrl = process.env.CARBITRAGE_MARKET_API_URL?.trim();
 const marketKeyFile = process.env.CARBITRAGE_MARKET_API_KEY_FILE?.trim();
-const wholesale = flags.preview
-  ? createWholesale({
-      pool: new pg.Pool({ connectionString: migrateUrl, max: 4 }),
-      market: marketUrl && marketKeyFile ? { baseUrl: marketUrl, keyFile: marketKeyFile, cacheFile: process.env.CARBITRAGE_MARKET_API_CACHE_FILE?.trim() || undefined } : null,
-      now: () => new Date(),
-    })
-  : null;
+const market = marketUrl && marketKeyFile ? { baseUrl: marketUrl, keyFile: marketKeyFile, cacheFile: process.env.CARBITRAGE_MARKET_API_CACHE_FILE?.trim() || undefined, cacheOnly: process.env.CARBITRAGE_MARKET_API_CACHE_ONLY === "1" } : null;
+const PREVIEW_DEALER_USER = "00000000-0000-4000-8000-0000000d0001";
+let wholesale: ReturnType<typeof createWholesale> | null = null;
+let wholesaleUser: ((userId: string) => Promise<string>) | null = null;
+if (flags.preview) {
+  wholesale = createWholesale({ pool: new pg.Pool({ connectionString: migrateUrl, max: 4 }), market, now: () => new Date(), preview: true });
+  // Preview sign-in: only the Patrick Auto persona is the preview dealer. Any other persona is a different, non-member user.
+  wholesaleUser = async (userId) => {
+    const snap = await port.read({ kind: "user", userId });
+    const email = snap.users.find((u) => u.id === userId)?.email?.toLowerCase();
+    return email === "patrick@demo.carbitrage.test" ? PREVIEW_DEALER_USER : userId;
+  };
+} else if (process.env.CARBITRAGE_WHOLESALE_DATABASE_URL) {
+  // Go-live wiring, NOT enabled anywhere yet. Needs the pending migrations applied, a service-role connection string and the
+  // Supabase JWT secret. Callers are identified only by their verified Supabase sign-in.
+  if (process.env.CARBITRAGE_WHOLESALE_GO_LIVE !== "1" || !flags.jwtSecret) {
+    throw new Error("CARBITRAGE_WHOLESALE_DATABASE_URL needs CARBITRAGE_WHOLESALE_GO_LIVE=1 and SUPABASE_JWT_SECRET");
+  }
+  wholesale = createWholesale({ pool: new pg.Pool({ connectionString: process.env.CARBITRAGE_WHOLESALE_DATABASE_URL, max: 4, ssl: { rejectUnauthorized: false } }), market, now: () => new Date(), preview: false });
+}
 
 const directory: AuthDirectory = {
   async demoPassword(email) {
@@ -76,6 +89,7 @@ const server = await startCarbitrageServer(
     now: () => DEMO_NOW,
     previewGate,
     wholesale,
+    wholesaleUser,
     staticRoot: flags.preview ? (process.env.CARBITRAGE_STATIC_ROOT ?? "dist") : null,
   },
   Number(process.env.CARBITRAGE_PORT ?? 8787),

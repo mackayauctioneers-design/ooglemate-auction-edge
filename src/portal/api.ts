@@ -35,12 +35,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const portalApi = {
-  health: () => request<{ ok: boolean; demoMode: boolean; billingEnabled: false }>("/api/carbitrage/health"),
+  health: () => request<{ ok: boolean; demoMode: boolean; supabaseSignIn?: boolean; billingEnabled: false }>("/api/carbitrage/health"),
   me: () => request<Me>("/api/carbitrage/me"),
   login: (email: string, password: string) =>
     request<{ ok: true; displayName: string }>("/api/carbitrage/session", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    }),
+  /** Real sign-in: the server verifies the Supabase access token itself and sets its own session cookie. */
+  exchangeSupabaseToken: (accessToken: string) =>
+    request<{ ok: true; auth: "supabase_jwt" }>("/api/carbitrage/session", {
+      method: "POST",
+      body: JSON.stringify({ accessToken }),
     }),
   demo: (persona: string) =>
     request<{ ok: true; displayName: string; email: string }>("/api/carbitrage/session/demo", {

@@ -34,13 +34,37 @@ export async function applyCanonicalSchema(connectionString: string): Promise<vo
 }
 
 /** Preview only. Creates the local mirror of the wholesale tables and labelled test rows in the disposable database. */
+const MIRROR_VERSION = "20261120-c";
+
+/**
+ * Preview only. Builds the production-shaped wholesale tables in the disposable local database, then runs the two pending
+ * production migrations (supabase/pending/) on top, unchanged, so the preview exercises the real functions. Rebuilt only
+ * when MIRROR_VERSION changes, so test requests survive a restart.
+ */
 export async function applyWholesaleMirror(connectionString: string): Promise<void> {
   assertDisposableDatabaseUrl(connectionString);
   const client = new pg.Client({ connectionString });
   await client.connect();
   try {
-    const sql = readFileSync(new URL("../../supabase/drafts/20261120_preview_wholesale_mirror.sql", import.meta.url), "utf8");
-    await client.query(sql);
+    const marker = await client.query("select to_regclass('public.preview_mirror_version') as t");
+    if (marker.rows[0].t) {
+      const v = await client.query("select version from preview_mirror_version limit 1");
+      if (v.rows[0]?.version === MIRROR_VERSION) return;
+    }
+    await client.query(`
+      drop table if exists wholesale_bid_events, wholesale_bids, wholesale_tenders, wholesale_buyers, wholesale_buyer_alerts,
+        wholesale_notification_log, dealership_features, dealership_members, dealerships, preview_wholesale_held,
+        preview_wholesale_test_cars, preview_wholesale_dealers, carbitrage_switches, preview_mirror_version cascade;
+      do $$ declare f text; begin
+        for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname like 'carbitrage_wholesale_%' loop execute 'drop function ' || f || ' cascade'; end loop;
+      end $$;`);
+    const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
+    await client.query(read("../../supabase/drafts/20261120_preview_wholesale_mirror.sql"));
+    await client.query(read("../../supabase/pending/carbitrage-wholesale-0001-franchise-columns.sql"));
+    await client.query(read("../../supabase/pending/carbitrage-wholesale-0002-rpc-v1.sql"));
+    await client.query("create table preview_mirror_version (version text not null)");
+    await client.query("insert into preview_mirror_version values ($1)", [MIRROR_VERSION]);
   } finally {
     await client.end();
   }

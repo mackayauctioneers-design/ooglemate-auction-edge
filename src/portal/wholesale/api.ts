@@ -18,14 +18,19 @@ export interface Guide {
   floor_basis: string | null;
   floor_basis_note: string | null;
   year_below: { price_ex_gov: number; year: number; km: number; link: string | null } | null;
+  /** Where the figures came from: shown under each guide. */
+  source?: "market_api" | "recorded_fixture" | "sample_fixture";
+  live_check?: { state: "checking" | "done" | "gave_up"; eta_seconds: number | null; poll_after_s: number } | null;
   outlier_ads: Array<{ price_ex_gov: number; year: number; km: number; link: string | null; gap_pct: number | null; note: string | null }>;
 }
 export interface CarInfo {
   rego: string; state: string; year: number; make: string; model: string; badge: string; km?: number; odometerKm?: number;
   body?: string | null; colour?: string | null; transmission?: string | null; vinMasked?: string | null; notes: string | null;
 }
+export interface Me { dealer: { id: string; name: string } | null; buyer: { id: string; name: string } | null }
 export interface GuideReply { held: boolean; reason: string | null; guide: Guide | null; source: string; engine: string | null; route: string | null; freshExactYearAds: number | null; car: CarInfo & { km: number } }
-export interface Info { mode: "preview"; valuationSource: "market_api" | "recorded"; dealer: { name: string; state: string }; testCars: Array<{ rego: string; label: string; km: number }> }
+export interface CarParams { rego: string; km: number; badge: string; year: string; make: string; model: string; state: string }
+export interface Info { mode: "preview" | "live"; valuationSource: "market_api" | "recorded"; dealer: { name: string }; manualEntry?: boolean; testCars: Array<{ rego: string; label: string; km: number }> }
 export interface Buyer { id: string; name: string }
 export interface PriceRow { bidId: string; buyerId: string; name: string; amountCents: number; note: string | null; at: string }
 export interface Person { business: string; person: string; phone: string | null; email: string; address?: string }
@@ -69,13 +74,21 @@ async function call<T>(path: string, init?: { method?: string; body?: unknown })
   return json as T;
 }
 
+function carBody(p: Partial<CarParams> & { km: number }) {
+  const out: Record<string, unknown> = { km: p.km };
+  for (const k of ["rego", "badge", "make", "model", "state"] as const) if (p[k]) out[k] = p[k];
+  if (p.year) out.year = Number(p.year);
+  return out;
+}
+
 export const wholesaleApi = {
   info: () => call<Info>("/info"),
   buyers: () => call<{ buyers: Buyer[] }>("/buyers"),
   lookup: (rego: string) => call<{ car: CarInfo }>("/lookup", { method: "POST", body: { rego } }),
-  guide: (rego: string, km: number, badge?: string) => call<GuideReply>("/guide", { method: "POST", body: { rego, km, badge } }),
-  send: (input: { rego: string; km: number; badge?: string; buyerIds: string[] | "all"; note: string }) =>
-    call<{ code: string; sentTo: number }>("/send", { method: "POST", body: input }),
+  me: () => call<Me>("/me"),
+  guide: (p: Partial<CarParams> & { km: number }) => call<GuideReply>("/guide", { method: "POST", body: carBody(p) }),
+  send: (input: Partial<CarParams> & { km: number; buyerIds: string[] | "all"; note: string }) =>
+    call<{ code: string; sentTo: number }>("/send", { method: "POST", body: { ...carBody(input), buyerIds: input.buyerIds, note: input.note } }),
   request: (code: string) => call<RequestView>(`/requests/${encodeURIComponent(code)}`),
   requests: () => call<{ requests: RequestView[] }>("/requests"),
   pick: (code: string, bidId: string) => call<{ ok: true }>(`/requests/${encodeURIComponent(code)}/pick`, { method: "POST", body: { bidId } }),
@@ -83,10 +96,11 @@ export const wholesaleApi = {
   collected: (code: string) => call<{ ok: true }>(`/requests/${encodeURIComponent(code)}/collected`, { method: "POST", body: {} }),
   updates: () => call<{ updates: DealerUpdate[] }>("/updates"),
   buyerList: () => call<{ buyers: Buyer[] }>("/buyer/list"),
-  buyerCars: (as: string) => call<{ buyer: Buyer; cars: BuyerCar[] }>(`/buyer/cars?as=${encodeURIComponent(as)}`),
+  // `as` is the preview-only buyer picker. Empty when signed in for real: the server then uses the buyer's own sign-in.
+  buyerCars: (as: string) => call<{ buyer: Buyer; cars: BuyerCar[] }>(`/buyer/cars${as ? `?as=${encodeURIComponent(as)}` : ""}`),
   buyerPrice: (as: string, code: string, amountDollars: number, note?: string) =>
-    call<{ ok: true }>("/buyer/price", { method: "POST", body: { as, code, amountDollars, note } }),
-  buyerHistory: (as: string) => call<{ rows: HistoryRow[] }>(`/buyer/history?as=${encodeURIComponent(as)}`),
+    call<{ ok: true }>("/buyer/price", { method: "POST", body: { ...(as ? { as } : {}), code, amountDollars, note } }),
+  buyerHistory: (as: string) => call<{ rows: HistoryRow[] }>(`/buyer/history${as ? `?as=${encodeURIComponent(as)}` : ""}`),
 };
 
 export interface Loaded<T> { data: T | null; error: WholesaleApiError | null; loading: boolean; reload: () => void }

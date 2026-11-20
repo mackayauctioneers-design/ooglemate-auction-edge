@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, portalApi } from "./api";
+import { wholesaleApi } from "./wholesale/api";
 
 const PERSONAS = [
   { id: "patrick", label: "Patrick Auto", detail: "Standalone franchise. No Ooglecars yard." },
@@ -20,18 +21,45 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  const [realSignIn, setRealSignIn] = useState(false);
 
   useEffect(() => {
     document.title = "Sign in | Carbitrage";
-    portalApi.health().then((health) => setDemoMode(health.demoMode)).catch(() => setDemoMode(false));
+    portalApi.health().then((health) => {
+      setDemoMode(health.demoMode);
+      setRealSignIn(Boolean(health.supabaseSignIn));
+      // Already signed in with a real account: go straight to their desk.
+      if (health.supabaseSignIn) goToDesk(true);
+    }).catch(() => setDemoMode(false));
     portalApi.me().then(() => navigate("/portal/finds", { replace: true })).catch(() => undefined);
   }, [navigate]);
+
+  /** A dealer lands on the wholesale desk, an approved buyer on theirs. Anyone else is told plainly. */
+  async function goToDesk(quiet = false) {
+    try {
+      const who = await wholesaleApi.me();
+      if (who.dealer) navigate("/portal/wholesale/start", { replace: true });
+      else if (who.buyer) navigate("/portal/buyer-view", { replace: true });
+      else if (!quiet) setError("This account is not set up for wholesale yet.");
+    } catch {
+      if (!quiet) setError("This account is not set up for wholesale yet.");
+    }
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      if (realSignIn) {
+        // The existing Ooglecars/Supabase sign-in. The server checks the token itself, then keeps its own session.
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        if (authError || !data.session) throw new ApiError(401, "unauthenticated", "Email or password is incorrect");
+        await portalApi.exchangeSupabaseToken(data.session.access_token);
+        await goToDesk();
+        return;
+      }
       await portalApi.login(email, password);
       navigate("/portal/finds");
     } catch (err) {

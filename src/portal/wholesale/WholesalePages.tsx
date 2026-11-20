@@ -6,6 +6,8 @@ import {
   wholesaleApi,
   WholesaleApiError,
   type Buyer,
+  type CarParams,
+  type Info,
   type BuyerCar,
   type Guide,
   type GuideReply,
@@ -42,16 +44,21 @@ const STEPS = [
 
 /* ---------- building blocks ---------- */
 
+/** Says what the page is, never where a guide's figures came from: that is printed under each guide, per car. */
 function PreviewLabel() {
+  return <span className="uppercase tracking-wide" data-testid="preview-label">Preview · test dealer, test database, nothing is sent</span>;
+}
+
+function useMode(): "preview" | "live" | null {
   const info = useLoad(() => wholesaleApi.info().catch(() => null), []);
-  const source = info.data?.valuationSource === "market_api" ? "live Carbitrage engine" : "recorded or sample engine output";
-  return <span className="uppercase tracking-wide" data-testid="preview-label">Preview · test dealer, test database, nothing is sent · guide: {source}</span>;
+  return info.data?.mode ?? null;
 }
 
 function Frame({ title, sub, children, testId, wide = false }: { title: string; sub?: string; children: ReactNode; testId: string; wide?: boolean }) {
+  const mode = useMode();
   return (
     <div data-testid={testId} className={`mx-auto ${wide ? "max-w-5xl" : "max-w-2xl"}`}>
-      <div className="mb-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-neutral-400">
+      {mode === "live" ? <div className="mb-8" /> : <div className="mb-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-neutral-400">
         <PreviewLabel />
         <span aria-hidden="true">|</span>
         <nav aria-label="Preview steps" className="flex gap-3">
@@ -61,7 +68,7 @@ function Frame({ title, sub, children, testId, wide = false }: { title: string; 
             </NavLink>
           ))}
         </nav>
-      </div>
+      </div>}
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       {sub ? <p className="mt-1 text-sm text-neutral-500">{sub}</p> : null}
       <div className="mt-8 space-y-6">{children}</div>
@@ -154,7 +161,15 @@ function ViewAd({ url }: { url?: string }) {
   );
 }
 
-const credit = <p className="text-xs text-neutral-400">Valuations by Carbitrage</p>;
+const SOURCE_NOTE: Record<string, string> = {
+  market_api: "live Carbitrage engine",
+  recorded_fixture: "recorded engine run, not live",
+  sample_fixture: "sample figures, not from the live engine",
+};
+function Credit({ source }: { source?: string }) {
+  const note = source ? SOURCE_NOTE[source] : undefined;
+  return <p className="text-xs text-neutral-400" data-testid="guide-source">Valuations by Carbitrage{note ? ` · ${note}` : ""}</p>;
+}
 
 
 function carTitleOf(c: { year: number; make: string; model: string; badge: string }): string {
@@ -162,30 +177,75 @@ function carTitleOf(c: { year: number; make: string; model: string; badge: strin
 }
 
 function LoadState<T>({ state, children }: { state: { data: T | null; error: WholesaleApiError | null; loading: boolean }; children: (data: T) => ReactNode }) {
+  if (state.error?.status === 401) return <Navigate to="/portal/login" replace />;
   if (state.error) return <p className="text-sm text-neutral-500" data-testid="load-error">{state.error.message}</p>;
   if (!state.data) return <p className="text-sm text-neutral-400">Loading…</p>;
   return <>{children(state.data)}</>;
 }
 
-function useCarParams() {
+function useCarParams(): CarParams & { ready: boolean } {
   const [params] = useSearchParams();
   const rego = (params.get("rego") ?? "").toUpperCase();
   const kmValue = Number(params.get("km") ?? "");
   const badge = params.get("badge") ?? "";
-  return { rego, km: Number.isFinite(kmValue) ? kmValue : NaN, badge, ready: Boolean(rego) && Number.isFinite(kmValue) && params.get("km") !== null };
+  const year = params.get("year") ?? "";
+  const make = params.get("make") ?? "";
+  const model = params.get("model") ?? "";
+  const state = params.get("state") ?? "";
+  const typed = Boolean(year && make && model && state);
+  return { rego, km: Number.isFinite(kmValue) ? kmValue : NaN, badge, year, make, model, state, ready: (Boolean(rego) || typed) && Number.isFinite(kmValue) && params.get("km") !== null };
 }
 
-function carQuery(rego: string, kmValue: number, badge?: string): string {
-  const q = new URLSearchParams({ rego, km: String(kmValue) });
-  if (badge) q.set("badge", badge);
+function carQuery(p: Partial<CarParams> & { km: number }): string {
+  const q = new URLSearchParams({ km: String(p.km) });
+  for (const k of ["rego", "badge", "year", "make", "model", "state"] as const) if (p[k]) q.set(k, p[k] as string);
   return q.toString();
 }
 
 /* ---------- 1. Rego and odometer ---------- */
 
-export function WholesaleStartPage() {
+/** Live: no rego lookup is connected yet, so the dealer types the car. The odometer still has to be confirmed. */
+function ManualStart() {
   const navigate = useNavigate();
+  const [f, setF] = useState({ rego: "", year: "", make: "", model: "", badge: "", state: "", odo: "" });
+  const [checked, setChecked] = useState(false);
+  const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+  const kmValue = Number(f.odo.replace(/[^0-9]/g, ""));
+  const ready = Boolean(f.year && f.make && f.model && f.badge && f.state && kmValue && checked);
+  return (
+    <Frame testId="wholesale-start" title="Value a trade-in">
+      <Section testId="manual-car">
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Rego (optional)" value={f.rego} readOnly={false} mono onChange={(v) => set("rego")(v.toUpperCase())} />
+          <Input label="State" value={f.state} readOnly={false} onChange={(v) => set("state")(v.toUpperCase().slice(0, 3))} />
+          <Input label="Year" value={f.year} readOnly={false} onChange={(v) => set("year")(v.replace(/[^0-9]/g, "").slice(0, 4))} />
+          <Input label="Make" value={f.make} readOnly={false} onChange={set("make")} />
+          <Input label="Model" value={f.model} readOnly={false} onChange={set("model")} />
+          <Input label="Badge" value={f.badge} readOnly={false} onChange={set("badge")} />
+        </div>
+        <div className="mt-6 max-w-xs"><Input label="Odometer (km)" value={f.odo} readOnly={false} onChange={set("odo")} /></div>
+        <label className="mt-4 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="h-4 w-4 accent-neutral-950" data-testid="odo-checked" />
+          I've checked the odometer on the car
+        </label>
+      </Section>
+      <Actions>
+        <Primary testId="get-guide" disabled={!ready} onClick={() => navigate(`/portal/wholesale/guide?${carQuery({ rego: f.rego, year: f.year, make: f.make, model: f.model, badge: f.badge, state: f.state, km: kmValue })}`)}>
+          Get the guide
+        </Primary>
+      </Actions>
+    </Frame>
+  );
+}
+
+export function WholesaleStartPage() {
   const info = useLoad(() => wholesaleApi.info(), []);
+  if (info.data?.manualEntry) return <ManualStart />;
+  return <PreviewStart info={info} />;
+}
+
+function PreviewStart({ info }: { info: ReturnType<typeof useLoad<Info>> }) {
+  const navigate = useNavigate();
   const [rego, setRego] = useState("");
   const [odo, setOdo] = useState("");
   const [checked, setChecked] = useState(false);
@@ -238,7 +298,7 @@ export function WholesaleStartPage() {
         <Primary
           testId="get-guide"
           disabled={!car || !checked || !kmValue}
-          onClick={() => car && navigate(`/portal/wholesale/guide?${carQuery(car.rego, kmValue)}`)}
+          onClick={() => car && navigate(`/portal/wholesale/guide?${carQuery({ rego: car.rego, km: kmValue })}`)}
         >
           Get the guide
         </Primary>
@@ -262,6 +322,7 @@ export function GuideBlock({ guide, car, forBuyer = false }: { guide: Guide; car
         <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-neutral-500"><span>{floor.title} · {km(floor.km)}{floor.state ? ` · ${floor.state}` : ""}</span><ViewAd url={floor.link ?? undefined} /></p>
         {guide.provisional ? <p className="mt-2 text-xs" style={{ color: AMBER }}>Provisional, not enough evidence yet.</p> : null}
         {guide.floor_basis_note ? <p className="mt-2 text-xs" style={{ color: AMBER }} data-testid="floor-basis-note">{guide.floor_basis_note}</p> : null}
+        {forBuyer ? null : <LiveCheck check={guide.live_check} />}
       </Section>
       <div className="grid grid-cols-2 gap-6">
         <Section>
@@ -311,29 +372,53 @@ export function GuideBlock({ guide, car, forBuyer = false }: { guide: Guide; car
           <p>The year-below price is shown for reference only. It's never the floor.</p>
           {forBuyer ? null : <p>Prices are all {car.year} {car.make} {car.model} {car.badge}, excluding government charges.</p>}
         </HowWeGotThis>
-        {credit}
+        <Credit source={guide.source} />
       </div>
     </div>
   );
 }
 
+function LiveCheck({ check }: { check: Guide["live_check"] }) {
+  if (!check) return null;
+  if (check.state === "checking") {
+    const mins = check.eta_seconds ? Math.max(1, Math.round(check.eta_seconds / 60)) : null;
+    return (
+      <p className="mt-2 flex items-center gap-2 text-xs" style={{ color: AMBER }} data-testid="live-checking">
+        <Dot color={AMBER} />Checking Carsales live. These figures are from our own market data and may change{mins ? ` in about ${mins} min` : " shortly"}.
+      </p>
+    );
+  }
+  if (check.state === "gave_up") return <p className="mt-2 text-xs text-neutral-400" data-testid="live-gave-up">The live Carsales check did not finish. These figures are from our own market data.</p>;
+  return <p className="mt-2 text-xs text-neutral-400" data-testid="live-done">Checked against live Carsales.</p>;
+}
+
 function useGuide() {
   const p = useCarParams();
-  const state = useLoad<GuideReply | null>(() => (p.ready ? wholesaleApi.guide(p.rego, p.km, p.badge || undefined) : Promise.resolve(null)), [p.rego, p.km, p.badge, p.ready]);
+  const state = useLoad<GuideReply | null>(() => (p.ready ? wholesaleApi.guide(p) : Promise.resolve(null)), [p.rego, p.km, p.badge, p.year, p.make, p.model, p.state, p.ready]);
+  // While Carsales is being checked live, ask again after the engine's own wait (never faster than 20 s). The server decides
+  // whether a call goes out, so this cannot burn the key's hourly limit.
+  const check = state.data?.guide?.live_check;
+  const wait = check?.state === "checking" ? (Math.max(check.poll_after_s, 20) + 1) * 1000 : null;
+  const reload = state.reload;
+  useEffect(() => {
+    if (!wait) return;
+    const id = setTimeout(reload, wait);
+    return () => clearTimeout(id);
+  }, [wait, reload, state.data]);
   return { p, state };
 }
 
 export function WholesaleGuidePage() {
   const { p, state } = useGuide();
   if (!p.ready) return <Navigate to="/portal/wholesale/start" replace />;
-  if (state.data?.held) return <Navigate to={`/portal/wholesale/held?${carQuery(p.rego, p.km, p.badge)}`} replace />;
+  if (state.data?.held) return <Navigate to={`/portal/wholesale/held?${carQuery(p)}`} replace />;
   return (
     <LoadState state={state}>
       {(g) => g && g.guide ? (
         <Frame testId="wholesale-guide" title={carTitleOf(g.car)} sub={`${km(g.car.km)} · ${g.car.state}`}>
           <GuideBlock guide={g.guide} car={g.car} />
           <Actions>
-            <Primary to={`/portal/wholesale/send?${carQuery(p.rego, p.km, p.badge)}`} testId="to-send">Send to wholesalers</Primary>
+            <Primary to={`/portal/wholesale/send?${carQuery(p)}`} testId="to-send">Send to wholesalers</Primary>
           </Actions>
         </Frame>
       ) : null}
@@ -353,7 +438,7 @@ export function WholesaleSendPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!p.ready) return <Navigate to="/portal/wholesale/start" replace />;
-  if (state.data?.held) return <Navigate to={`/portal/wholesale/held?${carQuery(p.rego, p.km, p.badge)}`} replace />;
+  if (state.data?.held) return <Navigate to={`/portal/wholesale/held?${carQuery(p)}`} replace />;
   const list: Buyer[] = buyers.data?.buyers ?? [];
   const count = mode === "all" ? list.length : picked.length;
   const g = state.data;
@@ -362,10 +447,10 @@ export function WholesaleSendPage() {
     if (!g) return;
     setBusy(true); setError(null);
     try {
-      const out = await wholesaleApi.send({ rego: p.rego, km: p.km, badge: p.badge || undefined, buyerIds: mode === "all" ? "all" : picked, note: note ?? g.car.notes ?? "" });
+      const out = await wholesaleApi.send({ ...p, badge: p.badge || undefined, buyerIds: mode === "all" ? "all" : picked, note: note ?? g.car.notes ?? "" });
       navigate(`/portal/wholesale/compare?code=${out.code}`);
     } catch (e) {
-      if (e instanceof WholesaleApiError && e.code === "floor_held") navigate(`/portal/wholesale/held?${carQuery(p.rego, p.km, p.badge)}`);
+      if (e instanceof WholesaleApiError && e.code === "floor_held") navigate(`/portal/wholesale/held?${carQuery(p)}`);
       else setError(e instanceof Error ? e.message : "Could not send");
       setBusy(false);
     }
@@ -407,8 +492,9 @@ export function WholesaleSendPage() {
             <p className="mt-2 text-xs text-neutral-400" data-testid="buyer-note-hint">Buyers see this note and "Franchise dealer, {r.car.state}". Don't include your name or number.</p>
           </Section>
           {error ? <p className="text-sm text-neutral-600" data-testid="send-error">{error}</p> : null}
+          {r.guide.live_check?.state === "checking" ? <div data-testid="send-waiting"><LiveCheck check={r.guide.live_check} /><p className="mt-1 text-xs text-neutral-500">This can go to buyers as soon as the live check finishes. The page updates by itself.</p></div> : null}
           <Actions>
-            <Primary testId="send-button" disabled={busy || count === 0} onClick={() => void send()}>Send to {count} buyer{count === 1 ? "" : "s"}</Primary>
+            <Primary testId="send-button" disabled={busy || count === 0 || r.guide.live_check?.state === "checking"} onClick={() => void send()}>Send to {count} buyer{count === 1 ? "" : "s"}</Primary>
             <span className="text-xs text-neutral-400">No fee. No countdown.</span>
           </Actions>
         </Frame>
@@ -425,7 +511,7 @@ export function WholesaleHeldPage() {
   const [kmValue, setKmValue] = useState<string | null>(null);
   const [badge, setBadge] = useState<string | null>(null);
   if (!p.ready) return <Navigate to="/portal/wholesale/start" replace />;
-  if (state.data && !state.data.held) return <Navigate to={`/portal/wholesale/guide?${carQuery(p.rego, p.km, p.badge)}`} replace />;
+  if (state.data && !state.data.held) return <Navigate to={`/portal/wholesale/guide?${carQuery(p)}`} replace />;
   return (
     <LoadState state={state}>
       {(r) => r ? (
@@ -436,6 +522,7 @@ export function WholesaleHeldPage() {
               {r.freshExactYearAds != null ? `We found ${r.freshExactYearAds} fresh ${r.car.year} ad and need 2. ` : ""}
               {r.reason ? `${r.reason} ` : ""}A live search usually takes a few minutes. It won't go to buyers without a floor.
             </p>
+            {r.source === "sample_fixture" ? <p className="mt-2 text-xs text-neutral-400" data-testid="guide-source">Sample result, not from the live engine</p> : null}
           </Section>
           <Section title="Check the details" testId="held-edit">
             <div className="grid grid-cols-2 gap-3">
@@ -449,7 +536,7 @@ export function WholesaleHeldPage() {
               onClick={() => {
                 const next = Number((kmValue ?? String(r.car.km)).replace(/[^0-9]/g, "")) || r.car.km;
                 const nextBadge = (badge ?? r.car.badge).trim();
-                navigate(`/portal/wholesale/held?${carQuery(p.rego, next, nextBadge === r.car.badge && !p.badge ? undefined : nextBadge)}`, { replace: true });
+                navigate(`/portal/wholesale/held?${carQuery({ ...p, km: next, badge: nextBadge === r.car.badge && !p.badge ? undefined : nextBadge })}`, { replace: true });
               }}
             >
               Re-check
@@ -637,7 +724,8 @@ function useBuyerId() {
   const list = useLoad(() => wholesaleApi.buyerList(), []);
   const asParam = params.get("as");
   const current = asParam ?? list.data?.buyers[0]?.id ?? "";
-  return { current, buyers: list.data?.buyers ?? [], set: (id: string) => setParams({ as: id }, { replace: true }) };
+  // In production the list route does not exist (404) and `as` stays empty: the buyer is whoever signed in.
+  return { current, ready: !list.loading, buyers: list.data?.buyers ?? [], set: (id: string) => setParams({ as: id }, { replace: true }) };
 }
 
 function BuyerChrome({ children, as, buyers, onAs }: { children: ReactNode; as: string; buyers: Buyer[]; onAs: (id: string) => void }) {
@@ -650,12 +738,12 @@ function BuyerChrome({ children, as, buyers, onAs }: { children: ReactNode; as: 
           <nav aria-label="Buyer" className="flex items-center gap-5 text-sm">
             <NavLink to={`/portal/buyer-view${q}`} className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")}>Cars</NavLink>
             <NavLink to={`/portal/buyer-prices${q}`} className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")} data-testid="link-my-prices">My prices</NavLink>
-            <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+            {buyers.length === 0 ? null : <label className="flex items-center gap-1.5 text-xs text-neutral-400">
               Preview as
               <select value={as} onChange={(e) => onAs(e.target.value)} className="border border-neutral-200 bg-white px-1.5 py-1 text-xs text-neutral-700" data-testid="preview-as">
                 {buyers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-            </label>
+            </label>}
           </nav>
         </div>
       </header>
@@ -666,7 +754,7 @@ function BuyerChrome({ children, as, buyers, onAs }: { children: ReactNode; as: 
 
 export function WholesaleBuyerPage() {
   const b = useBuyerId();
-  const state = useLoad(() => (b.current ? wholesaleApi.buyerCars(b.current) : Promise.resolve(null)), [b.current]);
+  const state = useLoad(() => (b.ready ? wholesaleApi.buyerCars(b.current) : Promise.resolve(null)), [b.current, b.ready]);
   const [selected, setSelected] = useState<string | null>(null);
   return (
     <BuyerChrome as={b.current} buyers={b.buyers} onAs={b.set}>
@@ -824,7 +912,7 @@ function HistoryItem({ row, as, onSaved }: { row: HistoryRow; as: string; onSave
 
 export function BuyerPriceHistoryPage() {
   const b = useBuyerId();
-  const state = useLoad(() => (b.current ? wholesaleApi.buyerHistory(b.current) : Promise.resolve(null)), [b.current]);
+  const state = useLoad(() => (b.ready ? wholesaleApi.buyerHistory(b.current) : Promise.resolve(null)), [b.current, b.ready]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [outcome, setOutcome] = useState<"all" | PriceOutcome>("all");

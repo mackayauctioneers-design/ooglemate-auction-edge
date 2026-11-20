@@ -2,6 +2,16 @@
 -- Mirrors the production column names, types, defaults and checks of public.wholesale_tenders, wholesale_bids and
 -- wholesale_buyers (read from production, schema only, 20 Nov 2026). Foreign keys to other production tables are left out.
 -- Seed rows are clearly labelled test data. No real dealership, buyer contact or car is created here.
+-- It also stubs the few other production tables the franchise functions touch (dealerships, dealership_members,
+-- dealership_features, wholesale_buyer_alerts, wholesale_notification_log, wholesale_bid_events) so the pending
+-- migrations in supabase/pending/ run unchanged here. main.ts applies this file, then those migrations, in preview only.
+
+create schema if not exists private;
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+end $$;
 
 create table if not exists wholesale_buyers (
   id uuid primary key default gen_random_uuid(),
@@ -103,28 +113,90 @@ create table if not exists wholesale_bids (
       or (bidder_kind = 'first_look_yard' and bidder_dealership_id is not null and buyer_id is null))
 );
 
--- Same rule as production's wholesale-floor-guard: a new live request must carry a Carbitrage floor.
-create or replace function wholesale_require_floor() returns trigger language plpgsql as $$
+-- Production's floor guard, copied as read from production.
+create or replace function wholesale_require_floor_when_going_live() returns trigger language plpgsql as $$
 begin
-  if new.status = 'live' and (new.value_car_floor_cents is null or new.value_car_floor_cents <= 0) then
-    raise exception 'live wholesale request requires a Carbitrage floor';
+  if new.status = 'live' and coalesce(new.value_car_floor_cents, 0) <= 0 then
+    if tg_op = 'INSERT' or old.status is distinct from 'live' then
+      raise exception 'live wholesale request requires a Carbitrage floor';
+    end if;
   end if;
   return new;
 end $$;
-drop trigger if exists wholesale_require_floor on wholesale_tenders;
-create trigger wholesale_require_floor before insert on wholesale_tenders for each row execute function wholesale_require_floor();
+drop trigger if exists wholesale_require_floor_when_going_live on wholesale_tenders;
+create trigger wholesale_require_floor_when_going_live before insert or update on wholesale_tenders for each row execute function wholesale_require_floor_when_going_live();
+
+-- One price per buyer per car, as in production.
+create unique index if not exists wholesale_bids_one_buyer on wholesale_bids (tender_id, buyer_id) where buyer_id is not null;
+create unique index if not exists wholesale_bids_one_yard on wholesale_bids (tender_id, bidder_dealership_id) where bidder_dealership_id is not null;
+
+create table if not exists wholesale_bid_events (
+  id uuid primary key default gen_random_uuid(),
+  tender_id uuid not null,
+  bid_id uuid not null,
+  buyer_id uuid,
+  amount_cents integer not null,
+  note text,
+  created_at timestamptz default now(),
+  changed_by uuid
+);
+create or replace function private.wholesale_bid_events_record() returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  if tg_op = 'UPDATE' and new.amount_cents is not distinct from old.amount_cents then return new; end if;
+  insert into public.wholesale_bid_events (tender_id, bid_id, buyer_id, amount_cents, note, created_at, changed_by)
+  values (new.tender_id, new.id, new.buyer_id, new.amount_cents, new.note, clock_timestamp(), null);
+  return new;
+end $$;
+drop trigger if exists wholesale_bid_events_record on wholesale_bids;
+create trigger wholesale_bid_events_record after insert or update on wholesale_bids for each row execute function private.wholesale_bid_events_record();
+create or replace function private.wholesale_bids_price_lock() returns trigger language plpgsql as $$
+declare picked uuid; tender_status text;
+begin
+  select t.accepted_bid_id, t.status into picked, tender_status from public.wholesale_tenders t where t.id = new.tender_id;
+  if not found or picked is not null or (tender_status is distinct from 'fast_lane' and tender_status is distinct from 'live') then
+    raise exception 'Prices are locked on this car. The dealer has picked a buyer, or the request is not open.' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+drop trigger if exists wholesale_bids_price_lock on wholesale_bids;
+create trigger wholesale_bids_price_lock before insert or update on wholesale_bids for each row execute function private.wholesale_bids_price_lock();
+
+-- Stubs of other production tables (only the columns the franchise functions use).
+create table if not exists dealerships (id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique, address text, phone text, email text);
+create table if not exists dealership_members (dealership_id uuid not null, user_id uuid not null, role text not null default 'member', invited_by uuid, joined_at timestamptz default now(), primary key (dealership_id, user_id));
+create table if not exists dealership_features (id uuid primary key default gen_random_uuid(), dealership_id uuid not null, feature_key text not null, enabled boolean default true, created_at timestamptz default now(), updated_at timestamptz default now());
+create table if not exists wholesale_buyer_alerts (
+  id uuid primary key default gen_random_uuid(), buyer_id uuid not null, tender_id uuid not null, phase text not null,
+  estimated_profit_cents integer not null, price_cents integer not null, retail_floor_cents integer not null,
+  created_at timestamptz default now(), read_at timestamptz, priority boolean default false,
+  unique (buyer_id, tender_id)
+);
+create unique index if not exists wholesale_buyer_alerts_buyer_tender_req_uidx on wholesale_buyer_alerts (buyer_id, tender_id) where phase = 'tender';
+create table if not exists wholesale_notification_log (
+  id uuid primary key default gen_random_uuid(), channel text, kind text not null, body text not null,
+  tender_id uuid, buyer_id uuid, dealership_id uuid, created_at timestamptz default now()
+);
+create or replace function wholesale_yard_commitment_v1(_dealership_id uuid) returns table(requests integer, sold_to_buyer integer)
+language sql stable as $$ select count(*)::int, 0 from wholesale_tenders t where t.dealership_id = _dealership_id and t.status <> 'cancelled' $$;
+-- Production has the alert trigger live today. Mirror it so the migration's replacement has something to replace.
+create or replace function wholesale_alert_buyers_on_request() returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare c record; prio boolean := false;
+begin
+  if new.status <> 'live' then return new; end if;
+  if coalesce(new.value_car_floor_cents, 0) <= 0 then return new; end if;
+  select * into c from public.wholesale_yard_commitment_v1(new.dealership_id);
+  if c.requests - 1 >= 3 and c.sold_to_buyer::numeric / (c.requests - 1) >= 0.6 then prio := true; end if;
+  insert into public.wholesale_buyer_alerts (buyer_id, tender_id, phase, estimated_profit_cents, price_cents, retail_floor_cents, priority)
+  select b.id, new.id, 'tender', 0, 0, coalesce(new.value_car_floor_cents, new.retail_floor_cents, 0), prio
+    from public.wholesale_buyers b
+   where b.approved and b.active and b.status = 'approved' and not b.is_placeholder
+  on conflict (buyer_id, tender_id) where phase = 'tender' do nothing;
+  return new;
+end $$;
+drop trigger if exists wholesale_alert_buyers_on_request on wholesale_tenders;
+create trigger wholesale_alert_buyers_on_request after insert on wholesale_tenders for each row execute function wholesale_alert_buyers_on_request();
 
 -- Preview-only tables. These do not exist in production.
-create table if not exists preview_wholesale_dealers (
-  id uuid primary key,
-  name text not null,
-  state text not null,
-  person text not null,
-  phone text not null,
-  email text not null,
-  address text not null
-);
-
 create table if not exists preview_wholesale_test_cars (
   rego text primary key,
   state text not null,
@@ -152,15 +224,18 @@ create table if not exists preview_wholesale_held (
   cleared_at timestamptz
 );
 
-insert into preview_wholesale_dealers (id, name, state, person, phone, email, address) values
-  ('00000000-0000-4000-8000-00000000fa01', 'Preview Test Dealer (not a real dealership)', 'NSW', 'Test Person', '0400 000 000', 'test@dealer.example.invalid', '1 Example St, Example NSW 2000')
+insert into dealerships (id, name, slug, address, phone, email) values
+  ('00000000-0000-4000-8000-00000000fa01', 'Preview Test Dealer (not a real dealership)', 'preview-test-dealer', '1 Example St, Example NSW 2000', '0400 000 000', 'test@dealer.example.invalid')
 on conflict (id) do nothing;
+insert into dealership_features (dealership_id, feature_key, enabled) values ('00000000-0000-4000-8000-00000000fa01', 'wholesale_pricing', true);
+-- Preview sign-ins map to these fixed ids. They are not Supabase users.
+insert into dealership_members (dealership_id, user_id, role) values ('00000000-0000-4000-8000-00000000fa01', '00000000-0000-4000-8000-0000000d0001', 'owner') on conflict do nothing;
 
-insert into wholesale_buyers (id, status, business_name, abn, licence_number, licence_state, contact_name, contact_email, contact_phone, approved, active, approved_at, notes) values
-  ('00000000-0000-4000-8000-00000000b001', 'approved', 'Preview buyer: Macka', '', '', '', 'Macka', 'macka@buyer.example.invalid', '0400 000 001', true, true, now(), 'Preview test buyer, not a real contact'),
-  ('00000000-0000-4000-8000-00000000b002', 'approved', 'Preview buyer: Alex', '', '', '', 'Alex', 'alex@buyer.example.invalid', '0400 000 002', true, true, now(), 'Preview test buyer, not a real contact'),
-  ('00000000-0000-4000-8000-00000000b003', 'approved', 'Preview buyer: Griefy', '', '', '', 'Griefy', 'griefy@buyer.example.invalid', '0400 000 003', true, true, now(), 'Preview test buyer, not a real contact'),
-  ('00000000-0000-4000-8000-00000000b004', 'approved', 'Preview buyer: Cam', '', '', '', 'Cam', 'cam@buyer.example.invalid', '0400 000 004', true, true, now(), 'Preview test buyer, not a real contact')
+insert into wholesale_buyers (id, status, business_name, abn, licence_number, licence_state, contact_name, contact_email, contact_phone, approved, active, approved_at, notes, user_id) values
+  ('00000000-0000-4000-8000-00000000b001', 'approved', 'Preview buyer: Macka', '', '', '', 'Macka', 'macka@buyer.example.invalid', '0400 000 001', true, true, now(), 'Preview test buyer, not a real contact', '00000000-0000-4000-8000-0000000b0a01'),
+  ('00000000-0000-4000-8000-00000000b002', 'approved', 'Preview buyer: Alex', '', '', '', 'Alex', 'alex@buyer.example.invalid', '0400 000 002', true, true, now(), 'Preview test buyer, not a real contact', '00000000-0000-4000-8000-0000000b0a02'),
+  ('00000000-0000-4000-8000-00000000b003', 'approved', 'Preview buyer: Griefy', '', '', '', 'Griefy', 'griefy@buyer.example.invalid', '0400 000 003', true, true, now(), 'Preview test buyer, not a real contact', '00000000-0000-4000-8000-0000000b0a03'),
+  ('00000000-0000-4000-8000-00000000b004', 'approved', 'Preview buyer: Cam', '', '', '', 'Cam', 'cam@buyer.example.invalid', '0400 000 004', true, true, now(), 'Preview test buyer, not a real contact', '00000000-0000-4000-8000-0000000b0a04')
 on conflict (id) do nothing;
 
 insert into preview_wholesale_test_cars (rego, state, year, make, model, badge, body, colour, transmission, vin_masked, odometer_km, notes, fixture) values

@@ -28,8 +28,10 @@ export interface ServerOptions {
   now: () => Date;
   previewGate?: { secret: string } | null;
   staticRoot?: string | null;
-  /** Preview-only franchise wholesale API (local mirror tables). Null outside the private preview. */
+  /** Franchise wholesale API. In the private preview it runs on the local mirror; in production on the Ooglecars database through service-role functions. */
   wholesale?: Wholesale | null;
+  /** Preview only: maps a preview persona's id to the fixed preview dealer or buyer user. Unset in production. */
+  wholesaleUser?: ((userId: string) => Promise<string>) | null;
 }
 
 export function memoryDirectory(store: Store): AuthDirectory {
@@ -88,6 +90,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         ok: true,
         product: "carbitrage",
         demoMode: opts.demoMode,
+        supabaseSignIn: Boolean(opts.jwtSecret),
         billingEnabled: false,
         persistence: opts.persistence,
         hostedOauth: Boolean(opts.oauthIssuer && opts.oauthResourceUrl),
@@ -172,12 +175,22 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (path.startsWith("/api/wholesale/")) {
-      if (!opts.wholesale || !opts.previewGate) throw new ServiceError(404, "not_found", "Wholesale preview is not enabled");
+      if (!opts.wholesale) throw new ServiceError(404, "not_found", "Wholesale is not enabled");
       const sub = path.slice("/api/wholesale".length);
       const isBuyer = sub.startsWith("/buyer/");
-      if (!isBuyer) await userPrincipal(opts, req);
+      // Who is calling comes only from the server's own sign-in. Preview personas map to fixed preview users; in
+      // production this is the Supabase user id from the verified JWT. The browser never says who it is.
+      let signedIn: string | null = null;
+      try {
+        const principal = await userPrincipal(opts, req);
+        if (principal.kind !== "user") throw new ServiceError(401, "unauthenticated", "Sign in required");
+        signedIn = opts.wholesaleUser ? await opts.wholesaleUser(principal.userId) : principal.userId;
+      } catch (err) {
+        // A buyer in the private preview may arrive with no sign-in at all and use the preview picker.
+        if (!(isBuyer && opts.previewGate)) throw err;
+      }
       const body = req.method === "POST" ? await readJson(req).catch(() => ({} as Record<string, unknown>)) : {};
-      const out = await opts.wholesale.handle(isBuyer ? "buyer" : "dealer", req.method ?? "GET", sub, url.searchParams, body);
+      const out = await opts.wholesale.handle(isBuyer ? "buyer" : "dealer", signedIn, req.method ?? "GET", sub, url.searchParams, body);
       return send(res, out.status, out.body);
     }
 
