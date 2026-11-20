@@ -1,32 +1,24 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, Navigate, NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import { km } from "../format";
 import {
-  approvedBuyers,
-  buyerContact,
-  buyerPriceHistory,
-  cautiousBuy,
-  dealerContact,
-  dealerUpdates,
-  floorCar,
-  floorKmAdjusted,
-  heldCar,
-  kmCap,
-  nextComparables,
-  possibleBuy,
-  prices,
-  thinkingBuy,
-  tradeIn,
-  yearBelowReference,
-  type BuyerPriceHistoryRow,
-  type DealerUpdate,
+  useLoad,
+  wholesaleApi,
+  WholesaleApiError,
+  type Buyer,
+  type BuyerCar,
+  type Guide,
+  type GuideReply,
+  type HistoryRow,
   type PriceOutcome,
-} from "./exampleData";
+  type RequestView,
+  type DealerUpdate,
+} from "./api";
 
 /*
- * Preview-only screens for franchise dealers sending a trade-in to Ooglecars wholesalers
- * from Carbitrage. Example data only: no button here calls a server, a buyer or a feed.
- * Design: black and white. Colour only for status (green picked, amber open/held,
+ * Franchise wholesale screens, wired to the preview wholesale API (local test database that mirrors the real
+ * wholesale_tenders / wholesale_bids fields). Nothing here contacts a buyer. Publishing needs Macka's own go.
+ * Design: black and white, one black button per screen. Colour only for status (green picked, amber open/held,
  * blue franchise label) and the green floor accent.
  */
 
@@ -34,32 +26,33 @@ function aud(amount: number | null): string {
   if (amount == null) return "—";
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(amount);
 }
+const cents = (c: number | null) => (c == null ? null : c / 100);
 
 const GREEN = "#117A3A";
 const AMBER = "#B7791F";
 const BLUE = "#1F4FD8";
 
 const STEPS = [
-  { to: "/portal/wholesale/start", label: "1 Rego" },
-  { to: "/portal/wholesale/guide", label: "2 Guide" },
-  { to: "/portal/wholesale/send", label: "3 Send" },
-  { to: "/portal/wholesale/held", label: "3b Held" },
-  { to: "/portal/wholesale/compare", label: "4 Prices" },
-  { to: "/portal/wholesale/handover", label: "5 Handover" },
-  { to: "/portal/wholesale/updates", label: "6 Updates" },
-  { to: "/portal/buyer-view", label: "7 Buyer" },
-  { to: "/portal/buyer-prices", label: "8 My prices" },
+  { to: "/portal/wholesale/start", label: "New car" },
+  { to: "/portal/wholesale/compare", label: "Prices" },
+  { to: "/portal/wholesale/updates", label: "Updates" },
+  { to: "/portal/buyer-view", label: "Buyer view" },
+  { to: "/portal/buyer-prices", label: "Buyer: my prices" },
 ];
 
-const carTitle = `${tradeIn.year} ${tradeIn.make} ${tradeIn.model} ${tradeIn.badge}`;
-
 /* ---------- building blocks ---------- */
+
+function PreviewLabel() {
+  const info = useLoad(() => wholesaleApi.info().catch(() => null), []);
+  const source = info.data?.valuationSource === "market_api" ? "live Carbitrage engine" : "recorded or sample engine output";
+  return <span className="uppercase tracking-wide" data-testid="preview-label">Preview · test dealer, test database, nothing is sent · guide: {source}</span>;
+}
 
 function Frame({ title, sub, children, testId, wide = false }: { title: string; sub?: string; children: ReactNode; testId: string; wide?: boolean }) {
   return (
     <div data-testid={testId} className={`mx-auto ${wide ? "max-w-5xl" : "max-w-2xl"}`}>
       <div className="mb-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-neutral-400">
-        <span className="uppercase tracking-wide" data-testid="preview-label">Preview · example data, not live stock</span>
+        <PreviewLabel />
         <span aria-hidden="true">|</span>
         <nav aria-label="Preview steps" className="flex gap-3">
           {STEPS.map((step) => (
@@ -85,12 +78,12 @@ function Section({ title, children, accent, testId }: { title?: string; children
   );
 }
 
-function Primary({ children, to, disabled = false, testId }: { children: ReactNode; to?: string; disabled?: boolean; testId?: string }) {
+function Primary({ children, to, disabled = false, testId, onClick }: { children: ReactNode; to?: string; disabled?: boolean; testId?: string; onClick?: () => void }) {
   const cls = "inline-flex min-h-12 w-full items-center justify-center px-6 text-sm font-medium sm:w-auto";
-  if (disabled) return <button type="button" disabled className={`${cls} cursor-not-allowed bg-neutral-200 text-neutral-500`}>{children}</button>;
+  if (disabled) return <button type="button" disabled data-testid={testId} className={`${cls} cursor-not-allowed bg-neutral-200 text-neutral-500`}>{children}</button>;
   return to
     ? <Link to={to} data-testid={testId} className={`${cls} bg-neutral-950 text-white hover:bg-neutral-800`}>{children}</Link>
-    : <button type="button" data-testid={testId} className={`${cls} bg-neutral-950 text-white hover:bg-neutral-800`}>{children}</button>;
+    : <button type="button" data-testid={testId} onClick={onClick} className={`${cls} bg-neutral-950 text-white hover:bg-neutral-800`}>{children}</button>;
 }
 
 function Quiet({ children, to, onClick }: { children: ReactNode; to?: string; onClick?: () => void }) {
@@ -163,31 +156,92 @@ function ViewAd({ url }: { url?: string }) {
 
 const credit = <p className="text-xs text-neutral-400">Valuations by Carbitrage</p>;
 
+
+function carTitleOf(c: { year: number; make: string; model: string; badge: string }): string {
+  return `${c.year} ${c.make} ${c.model} ${c.badge}`;
+}
+
+function LoadState<T>({ state, children }: { state: { data: T | null; error: WholesaleApiError | null; loading: boolean }; children: (data: T) => ReactNode }) {
+  if (state.error) return <p className="text-sm text-neutral-500" data-testid="load-error">{state.error.message}</p>;
+  if (!state.data) return <p className="text-sm text-neutral-400">Loading…</p>;
+  return <>{children(state.data)}</>;
+}
+
+function useCarParams() {
+  const [params] = useSearchParams();
+  const rego = (params.get("rego") ?? "").toUpperCase();
+  const kmValue = Number(params.get("km") ?? "");
+  const badge = params.get("badge") ?? "";
+  return { rego, km: Number.isFinite(kmValue) ? kmValue : NaN, badge, ready: Boolean(rego) && Number.isFinite(kmValue) && params.get("km") !== null };
+}
+
+function carQuery(rego: string, kmValue: number, badge?: string): string {
+  const q = new URLSearchParams({ rego, km: String(kmValue) });
+  if (badge) q.set("badge", badge);
+  return q.toString();
+}
+
 /* ---------- 1. Rego and odometer ---------- */
 
 export function WholesaleStartPage() {
+  const navigate = useNavigate();
+  const info = useLoad(() => wholesaleApi.info(), []);
+  const [rego, setRego] = useState("");
+  const [odo, setOdo] = useState("");
+  const [checked, setChecked] = useState(false);
+  const [car, setCar] = useState<Awaited<ReturnType<typeof wholesaleApi.lookup>>["car"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!rego && info.data?.testCars[0]) setRego(info.data.testCars[0].rego);
+  }, [info.data, rego]);
+
+  useEffect(() => {
+    let live = true;
+    if (rego.trim().length < 5) { setCar(null); return; }
+    wholesaleApi.lookup(rego.trim()).then((r) => {
+      if (!live) return;
+      setCar(r.car); setError(null); setOdo(new Intl.NumberFormat("en-AU").format(r.car.odometerKm ?? 0));
+    }).catch((e: unknown) => { if (live) { setCar(null); setError(e instanceof Error ? e.message : "Not found"); } });
+    return () => { live = false; };
+  }, [rego]);
+
+  const kmValue = Number(odo.replace(/[^0-9]/g, ""));
   return (
     <Frame testId="wholesale-start" title="Value a trade-in">
       <Section>
         <div className="grid grid-cols-[1fr_6rem] gap-3">
-          <Input label="Rego" value={tradeIn.rego} mono />
-          <Input label="State" value={tradeIn.state} />
+          <Input label="Rego" value={rego} readOnly={false} mono onChange={(v) => setRego(v.toUpperCase())} />
+          <Input label="State" value={car?.state ?? ""} />
         </div>
-        <div className="mt-3"><Quiet>Or take photos instead</Quiet></div>
+        {info.data ? (
+          <p className="mt-3 text-xs text-neutral-400" data-testid="test-rego-hint">
+            Test cars: {info.data.testCars.map((c) => c.rego).join(", ")}
+          </p>
+        ) : null}
+        {error ? <p className="mt-3 text-sm text-neutral-500">{error}</p> : null}
       </Section>
-      <Section testId="found-car">
-        <p className="text-lg font-semibold">{carTitle}</p>
-        <p className="mt-1 text-sm text-neutral-500">{tradeIn.body} · {tradeIn.colour} · {tradeIn.transmission}</p>
-        <div className="mt-6 max-w-xs">
-          <Input label="Odometer (km)" value="58,400" />
-        </div>
-        <label className="mt-4 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked readOnly className="h-4 w-4 accent-neutral-950" />
-          I've checked the odometer on the car
-        </label>
-      </Section>
+      {car ? (
+        <Section testId="found-car">
+          <p className="text-lg font-semibold">{carTitleOf(car)}</p>
+          <p className="mt-1 text-sm text-neutral-500">{[car.body, car.colour, car.transmission].filter(Boolean).join(" · ")}</p>
+          <div className="mt-6 max-w-xs">
+            <Input label="Odometer (km)" value={odo} readOnly={false} onChange={setOdo} />
+          </div>
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="h-4 w-4 accent-neutral-950" data-testid="odo-checked" />
+            I've checked the odometer on the car
+          </label>
+        </Section>
+      ) : null}
       <Actions>
-        <Primary to="/portal/wholesale/guide">Get the guide</Primary>
+        <Primary
+          testId="get-guide"
+          disabled={!car || !checked || !kmValue}
+          onClick={() => car && navigate(`/portal/wholesale/guide?${carQuery(car.rego, kmValue)}`)}
+        >
+          Get the guide
+        </Primary>
       </Actions>
     </Frame>
   );
@@ -195,60 +249,66 @@ export function WholesaleStartPage() {
 
 /* ---------- 2. Carbitrage guide ---------- */
 
-export function GuideBlock({ forBuyer = false }: { forBuyer?: boolean }) {
+export function GuideBlock({ guide, car, forBuyer = false }: { guide: Guide; car: { year: number; make: string; model: string; badge: string; km: number }; forBuyer?: boolean }) {
   const [more, setMore] = useState(false);
-  const comps = more ? nextComparables : nextComparables.slice(0, 3);
+  const comps = more ? guide.comps : guide.comps.slice(0, 3);
+  const floor = guide.floor_car;
+  const kmCap = car.km + 15000;
   return (
     <div className="space-y-6" data-testid="guide-block">
       <Section accent={GREEN} testId="floor">
         <p className="text-sm text-neutral-500">Floor</p>
-        <p className="mt-1 text-4xl font-semibold tracking-tight">{aud(floorCar.priceExGov)}</p>
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-neutral-500"><span>{floorCar.title} · {km(floorCar.km)} · {floorCar.state}</span><ViewAd url={floorCar.url} /></p>
+        <p className="mt-1 text-4xl font-semibold tracking-tight">{aud(guide.floor_dollars)}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-neutral-500"><span>{floor.title} · {km(floor.km)}{floor.state ? ` · ${floor.state}` : ""}</span><ViewAd url={floor.link ?? undefined} /></p>
+        {guide.provisional ? <p className="mt-2 text-xs" style={{ color: AMBER }}>Provisional, not enough evidence yet.</p> : null}
       </Section>
       <div className="grid grid-cols-2 gap-6">
         <Section>
           <p className="text-sm text-neutral-500">Thinking</p>
-          <p className="mt-1 text-2xl font-semibold">{aud(thinkingBuy)}</p>
+          <p className="mt-1 text-2xl font-semibold" data-testid="thinking">{aud(guide.thinking)}</p>
         </Section>
         <Section>
           <p className="text-sm text-neutral-500">Cautious buy</p>
-          <p className="mt-1 text-2xl font-semibold">{aud(cautiousBuy)}</p>
+          <p className="mt-1 text-2xl font-semibold" data-testid="cautious">{aud(guide.cautious)}</p>
         </Section>
       </div>
       <Section title="Similar cars">
         <ul className="divide-y divide-neutral-100 text-sm" data-testid="comps">
           {comps.map((ad) => (
-            <li key={`${ad.km}-${ad.priceExGov}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-1.5">
+            <li key={`${ad.link}-${ad.km}-${ad.price_ex_gov}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-1.5">
               <span className="text-neutral-500">{km(ad.km)}</span>
-              <span className="w-10 text-neutral-500">{ad.state}</span>
-              <span className="w-20 text-right font-medium">{aud(ad.priceExGov)}</span>
-              <ViewAd url={ad.url} />
+              <span className="w-10 text-neutral-500">{ad.state ?? ""}</span>
+              <span className="w-20 text-right font-medium">{aud(ad.price_ex_gov)}</span>
+              <ViewAd url={ad.link ?? undefined} />
             </li>
           ))}
         </ul>
-        {nextComparables.length > 3 ? (
+        {guide.comps.length === 0 ? <p className="text-sm text-neutral-400">No other exact-year cars on top of the floor car.</p> : null}
+        {guide.comps.length > 3 ? (
           <div className="mt-3"><Quiet onClick={() => setMore((m) => !m)}>{more ? "Show less" : "Show more"}</Quiet></div>
         ) : null}
-        {forBuyer ? null : (
-          <p className="mt-3 flex items-center gap-2 text-xs text-neutral-500" data-testid="possible-buy">
+        {forBuyer ? null : guide.outlier_ads.map((o) => (
+          <p key={o.link ?? o.price_ex_gov} className="mt-3 flex items-center gap-2 text-xs text-neutral-500" data-testid="possible-buy">
             <Dot color="#0a0a0a" />
-            <span className="flex-1">Possible buy: {possibleBuy.title}, {km(possibleBuy.km)}, {possibleBuy.state}, {aud(possibleBuy.priceExGov)}. Well under the rest, so not used as the floor.</span>
-            <ViewAd url={possibleBuy.url} />
+            <span className="flex-1">Possible buy: {o.year}, {km(o.km)}, {aud(o.price_ex_gov)}. Well under the rest, so not used as the floor. Check it.</span>
+            <ViewAd url={o.link ?? undefined} />
           </p>
-        )}
-        <p className="mt-1 flex items-center gap-3 text-xs text-neutral-400" data-testid="year-below-reference">
-          <span className="flex-1">{yearBelowReference.year} cheapest {aud(yearBelowReference.priceExGov)} · reference only, not the floor</span>
-          <ViewAd url={yearBelowReference.url} />
-        </p>
+        ))}
+        {guide.year_below ? (
+          <p className="mt-1 flex items-center gap-3 text-xs text-neutral-400" data-testid="year-below-reference">
+            <span className="flex-1">{guide.year_below.year} cheapest {aud(guide.year_below.price_ex_gov)} · {km(guide.year_below.km)} · reference only, not the floor</span>
+            <ViewAd url={guide.year_below.link ?? undefined} />
+          </p>
+        ) : null}
       </Section>
       <div className="flex items-center justify-between gap-4">
         <HowWeGotThis>
-          <p>The floor is the cheapest genuine dealer ad for the same model and badge, plate year {tradeIn.year} only, up to {km(kmCap)} ({km(tradeIn.odometerKm)} + 15,000 km), before government charges.</p>
+          <p>The floor is the cheapest genuine dealer ad for the same model and badge, plate year {car.year} only, up to {km(kmCap)} ({km(car.km)} + 15,000 km), before government charges.</p>
           <p>Ads must be fresh: dealer sites within 2 days, feeds within 7. We need at least 2 fresh cars, or we run a live search.</p>
           <p>One cheap ad well under the rest doesn't set the floor on its own unless another ad backs it up. We show it to you as a possible buy instead.</p>
-          <p>Cautious buy is adjusted for km from the floor car (km-adjusted floor {aud(floorKmAdjusted)}).</p>
+          {floor.km_adjusted_price ? <p>Cautious buy is adjusted for km from the floor car (km-adjusted floor {aud(floor.km_adjusted_price)}).</p> : null}
           <p>The year-below price is shown for reference only. It's never the floor.</p>
-          {forBuyer ? null : <p>Prices are all {tradeIn.year} {tradeIn.make} {tradeIn.model} {tradeIn.badge}, excluding government charges.</p>}
+          {forBuyer ? null : <p>Prices are all {car.year} {car.make} {car.model} {car.badge}, excluding government charges.</p>}
         </HowWeGotThis>
         {credit}
       </div>
@@ -256,150 +316,244 @@ export function GuideBlock({ forBuyer = false }: { forBuyer?: boolean }) {
   );
 }
 
+function useGuide() {
+  const p = useCarParams();
+  const state = useLoad<GuideReply | null>(() => (p.ready ? wholesaleApi.guide(p.rego, p.km, p.badge || undefined) : Promise.resolve(null)), [p.rego, p.km, p.badge, p.ready]);
+  return { p, state };
+}
+
 export function WholesaleGuidePage() {
+  const { p, state } = useGuide();
+  if (!p.ready) return <Navigate to="/portal/wholesale/start" replace />;
+  if (state.data?.held) return <Navigate to={`/portal/wholesale/held?${carQuery(p.rego, p.km, p.badge)}`} replace />;
   return (
-    <Frame testId="wholesale-guide" title={carTitle} sub={`${km(tradeIn.odometerKm)} · ${tradeIn.state}`}>
-      <GuideBlock />
-      <Actions>
-        <Primary to="/portal/wholesale/send">Send to wholesalers</Primary>
-      </Actions>
-    </Frame>
+    <LoadState state={state}>
+      {(g) => g && g.guide ? (
+        <Frame testId="wholesale-guide" title={carTitleOf(g.car)} sub={`${km(g.car.km)} · ${g.car.state}`}>
+          <GuideBlock guide={g.guide} car={g.car} />
+          <Actions>
+            <Primary to={`/portal/wholesale/send?${carQuery(p.rego, p.km, p.badge)}`} testId="to-send">Send to wholesalers</Primary>
+          </Actions>
+        </Frame>
+      ) : null}
+    </LoadState>
   );
 }
 
 /* ---------- 3. Send to wholesalers ---------- */
 
 export function WholesaleSendPage() {
+  const navigate = useNavigate();
+  const { p, state } = useGuide();
+  const buyers = useLoad(() => wholesaleApi.buyers(), []);
   const [mode, setMode] = useState<"all" | "pick">("all");
-  const [picked, setPicked] = useState<string[]>(["macka", "cam"]);
-  const count = mode === "all" ? approvedBuyers.length : picked.length;
+  const [picked, setPicked] = useState<string[]>([]);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!p.ready) return <Navigate to="/portal/wholesale/start" replace />;
+  if (state.data?.held) return <Navigate to={`/portal/wholesale/held?${carQuery(p.rego, p.km, p.badge)}`} replace />;
+  const list: Buyer[] = buyers.data?.buyers ?? [];
+  const count = mode === "all" ? list.length : picked.length;
+  const g = state.data;
+
+  async function send() {
+    if (!g) return;
+    setBusy(true); setError(null);
+    try {
+      const out = await wholesaleApi.send({ rego: p.rego, km: p.km, badge: p.badge || undefined, buyerIds: mode === "all" ? "all" : picked, note: note ?? g.car.notes ?? "" });
+      navigate(`/portal/wholesale/compare?code=${out.code}`);
+    } catch (e) {
+      if (e instanceof WholesaleApiError && e.code === "floor_held") navigate(`/portal/wholesale/held?${carQuery(p.rego, p.km, p.badge)}`);
+      else setError(e instanceof Error ? e.message : "Could not send");
+      setBusy(false);
+    }
+  }
+
   return (
-    <Frame testId="wholesale-send" title="Send to wholesalers" sub={`${carTitle} · floor ${aud(floorCar.priceExGov)}`}>
-      <Section title="Who gets it">
-        <div className="space-y-3 text-sm">
-          <label className="flex items-center gap-3">
-            <input type="radio" name="mode" checked={mode === "all"} onChange={() => setMode("all")} className="h-4 w-4 accent-neutral-950" data-testid="mode-all" />
-            All 4 buyers <span className="text-neutral-400">{approvedBuyers.map((b) => b.name).join(", ")}</span>
-          </label>
-          <label className="flex items-center gap-3">
-            <input type="radio" name="mode" checked={mode === "pick"} onChange={() => setMode("pick")} className="h-4 w-4 accent-neutral-950" data-testid="mode-pick" />
-            Choose buyers
-          </label>
-        </div>
-        {mode === "pick" ? (
-          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-neutral-100 pt-4 text-sm" data-testid="buyer-picker">
-            {approvedBuyers.map((buyer) => (
-              <label key={buyer.id} className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-neutral-950"
-                  checked={picked.includes(buyer.id)}
-                  onChange={(e) => setPicked((prev) => (e.target.checked ? [...prev, buyer.id] : prev.filter((id) => id !== buyer.id)))}
-                />
-                {buyer.name}
+    <LoadState state={state}>
+      {(r) => r && r.guide ? (
+        <Frame testId="wholesale-send" title="Send to wholesalers" sub={`${carTitleOf(r.car)} · floor ${aud(r.guide.floor_dollars)}`}>
+          <Section title="Who gets it">
+            <div className="space-y-3 text-sm">
+              <label className="flex items-center gap-3">
+                <input type="radio" name="mode" checked={mode === "all"} onChange={() => setMode("all")} className="h-4 w-4 accent-neutral-950" data-testid="mode-all" />
+                All {list.length} buyers <span className="text-neutral-400">{list.map((b) => b.name).join(", ")}</span>
               </label>
-            ))}
-          </div>
-        ) : null}
-      </Section>
-      <Section title="Note for buyers (optional)">
-        <textarea readOnly rows={2} value={tradeIn.notes} className="block w-full border border-neutral-300 p-3 text-sm" data-testid="buyer-note" />
-        <p className="mt-2 text-xs text-neutral-400" data-testid="buyer-note-hint">Buyers see this note. Don't include your name or number.</p>
-      </Section>
-      <Actions>
-        <Primary to="/portal/wholesale/compare">Send to {count} buyer{count === 1 ? "" : "s"}</Primary>
-        <span className="text-xs text-neutral-400">No fee. No countdown.</span>
-      </Actions>
-    </Frame>
+              <label className="flex items-center gap-3">
+                <input type="radio" name="mode" checked={mode === "pick"} onChange={() => setMode("pick")} className="h-4 w-4 accent-neutral-950" data-testid="mode-pick" />
+                Choose buyers
+              </label>
+            </div>
+            {mode === "pick" ? (
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-neutral-100 pt-4 text-sm" data-testid="buyer-picker">
+                {list.map((buyer) => (
+                  <label key={buyer.id} className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-neutral-950"
+                      checked={picked.includes(buyer.id)}
+                      onChange={(e) => setPicked((prev) => (e.target.checked ? [...prev, buyer.id] : prev.filter((id) => id !== buyer.id)))}
+                    />
+                    {buyer.name}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </Section>
+          <Section title="Note for buyers (optional)">
+            <textarea rows={2} value={note ?? r.car.notes ?? ""} onChange={(e) => setNote(e.target.value)} className="block w-full border border-neutral-300 p-3 text-sm" data-testid="buyer-note" />
+            <p className="mt-2 text-xs text-neutral-400" data-testid="buyer-note-hint">Buyers see this note and "Franchise dealer, {r.car.state}". Don't include your name or number.</p>
+          </Section>
+          {error ? <p className="text-sm text-neutral-600" data-testid="send-error">{error}</p> : null}
+          <Actions>
+            <Primary testId="send-button" disabled={busy || count === 0} onClick={() => void send()}>Send to {count} buyer{count === 1 ? "" : "s"}</Primary>
+            <span className="text-xs text-neutral-400">No fee. No countdown.</span>
+          </Actions>
+        </Frame>
+      ) : null}
+    </LoadState>
   );
 }
 
 /* ---------- 3b. Held, no floor ---------- */
 
 export function WholesaleHeldPage() {
-  const [kmValue, setKmValue] = useState("141,200");
+  const navigate = useNavigate();
+  const { p, state } = useGuide();
+  const [kmValue, setKmValue] = useState<string | null>(null);
+  const [badge, setBadge] = useState<string | null>(null);
+  if (!p.ready) return <Navigate to="/portal/wholesale/start" replace />;
+  if (state.data && !state.data.held) return <Navigate to={`/portal/wholesale/guide?${carQuery(p.rego, p.km, p.badge)}`} replace />;
   return (
-    <Frame testId="wholesale-held" title={heldCar.title} sub={`${km(heldCar.odometerKm)} · ${heldCar.state}`}>
-      <Section accent={AMBER}>
-        <Status color={AMBER}>Held, no floor yet</Status>
-        <p className="mt-3 text-sm">We found {heldCar.freshExactYearAds} fresh 2016 ad and need 2. A live search is running and usually takes a few minutes. It won't go to buyers without a floor.</p>
-      </Section>
-      <Section title="Check the details" testId="held-edit">
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Odometer (km)" value={kmValue} readOnly={false} onChange={setKmValue} />
-          <label className="block">
-            <span className="text-xs text-neutral-500">Badge</span>
-            <select defaultValue="LTZ AWD" className="mt-1 block min-h-12 w-full border border-neutral-300 bg-white px-3 text-base">
-              <option>LTZ AWD</option>
-              <option>LX AWD</option>
-              <option>LS 2WD</option>
-              <option>Active 2WD</option>
-            </select>
-          </label>
-        </div>
-      </Section>
-      <Actions>
-        <Primary>Re-check</Primary>
-        <span className="text-xs text-neutral-400">We'll let you know when it's ready.</span>
-      </Actions>
-    </Frame>
+    <LoadState state={state}>
+      {(r) => r ? (
+        <Frame testId="wholesale-held" title={carTitleOf({ ...r.car })} sub={`${km(r.car.km)} · ${r.car.state}`}>
+          <Section accent={AMBER}>
+            <Status color={AMBER}>Held, no floor yet</Status>
+            <p className="mt-3 text-sm">
+              {r.freshExactYearAds != null ? `We found ${r.freshExactYearAds} fresh ${r.car.year} ad and need 2. ` : ""}
+              {r.reason ? `${r.reason} ` : ""}A live search usually takes a few minutes. It won't go to buyers without a floor.
+            </p>
+          </Section>
+          <Section title="Check the details" testId="held-edit">
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Odometer (km)" value={kmValue ?? new Intl.NumberFormat("en-AU").format(r.car.km)} readOnly={false} onChange={setKmValue} />
+              <Input label="Badge" value={badge ?? r.car.badge} readOnly={false} onChange={setBadge} />
+            </div>
+          </Section>
+          <Actions>
+            <Primary
+              testId="recheck"
+              onClick={() => {
+                const next = Number((kmValue ?? String(r.car.km)).replace(/[^0-9]/g, "")) || r.car.km;
+                const nextBadge = (badge ?? r.car.badge).trim();
+                navigate(`/portal/wholesale/held?${carQuery(p.rego, next, nextBadge === r.car.badge && !p.badge ? undefined : nextBadge)}`, { replace: true });
+              }}
+            >
+              Re-check
+            </Primary>
+            <span className="text-xs text-neutral-400">Nothing was sent. We'll let you know when it's ready.</span>
+          </Actions>
+        </Frame>
+      ) : null}
+    </LoadState>
   );
 }
 
 /* ---------- 4. Compare prices ---------- */
 
+function useRequest(code: string | null) {
+  const latest = useLoad(() => (code ? Promise.resolve(null) : wholesaleApi.requests()), [code]);
+  const resolved = code ?? latest.data?.requests.find((r) => r.status === "live" || r.status === "accepted")?.code ?? latest.data?.requests[0]?.code ?? null;
+  const state = useLoad<RequestView | null>(() => (resolved ? wholesaleApi.request(resolved) : Promise.resolve(null)), [resolved]);
+  const reload = state.reload;
+  useEffect(() => {
+    if (!resolved) return;
+    const t = window.setInterval(reload, 4000);
+    return () => window.clearInterval(t);
+  }, [resolved, reload]);
+  return { state, resolved, searching: !code && latest.loading };
+}
+
 export function WholesaleComparePage() {
-  const priced = prices.filter((p) => p.price != null).sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-  const waiting = prices.filter((p) => p.price == null);
-  const [pick, setPick] = useState<string>(priced[0]?.buyerId ?? "");
-  const chosen = prices.find((p) => p.buyerId === pick);
-  const chosenName = approvedBuyers.find((b) => b.id === pick)?.name ?? "";
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const { state, resolved, searching } = useRequest(params.get("code"));
+  const [pick, setPick] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const r = state.data;
+  const priced = r?.prices ?? [];
+  const chosen = priced.find((x) => x.bidId === pick) ?? priced[0];
+
+  if (r && r.status === "accepted") return <Navigate to={`/portal/wholesale/handover?code=${r.code}`} replace />;
+  if (!resolved && !searching) {
+    return <Frame testId="wholesale-compare" title="No cars out to buyers"><Actions><Primary to="/portal/wholesale/start">Value a trade-in</Primary></Actions></Frame>;
+  }
+
+  async function accept() {
+    if (!r || !chosen) return;
+    setBusy(true); setError(null);
+    try { await wholesaleApi.pick(r.code, chosen.bidId); navigate(`/portal/wholesale/handover?code=${r.code}`); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not pick"); setBusy(false); }
+  }
+  async function keep() {
+    if (!r) return;
+    await wholesaleApi.keep(r.code).catch(() => undefined);
+    navigate("/portal/wholesale/updates");
+  }
+
   return (
-    <Frame testId="wholesale-compare" title={`${priced.length} prices in`} sub={`${carTitle} · floor ${aud(floorCar.priceExGov)}`}>
-      <Section>
-        <ul className="divide-y divide-neutral-100">
-          {priced.map((row) => {
-            const name = approvedBuyers.find((b) => b.id === row.buyerId)?.name ?? "";
-            return (
-              <li key={row.buyerId}>
-                <label className="grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-4 py-4">
-                  <input type="radio" name="pick" checked={pick === row.buyerId} onChange={() => setPick(row.buyerId)} className="h-4 w-4 accent-neutral-950" />
-                  <span className="text-sm">
-                    {name}
-                    {row.note ? <span className="block text-xs text-neutral-400">{row.note}</span> : null}
-                  </span>
-                  <span className="text-2xl font-semibold tabular-nums">{aud(row.price)}</span>
-                </label>
-              </li>
-            );
-          })}
-          {waiting.map((row) => (
-            <li key={row.buyerId} className="grid grid-cols-[auto_1fr_auto] items-center gap-4 py-4 text-sm text-neutral-400">
-              <span className="h-4 w-4" />
-              <span>{approvedBuyers.find((b) => b.id === row.buyerId)?.name}</span>
-              <span>Waiting</span>
-            </li>
-          ))}
-        </ul>
-      </Section>
-      <Actions>
-        <Primary to="/portal/wholesale/handover">Accept {aud(chosen?.price ?? null)} from {chosenName}</Primary>
-        <Quiet>Keep the car</Quiet>
-      </Actions>
-      <p className="text-center text-xs text-neutral-400 sm:text-left">No fee. No countdown. Take your time.</p>
-    </Frame>
+    <LoadState state={state}>
+      {(req) => req ? (
+        <Frame testId="wholesale-compare" title={priced.length ? `${priced.length} price${priced.length === 1 ? "" : "s"} in` : "Sent. Waiting for prices"} sub={`${carTitleOf(req.car)} · floor ${aud(cents(req.floorCents))}`}>
+          <Section>
+            <ul className="divide-y divide-neutral-100">
+              {priced.map((row) => (
+                <li key={row.bidId}>
+                  <label className="grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-4 py-4">
+                    <input type="radio" name="pick" checked={(chosen?.bidId ?? "") === row.bidId} onChange={() => setPick(row.bidId)} className="h-4 w-4 accent-neutral-950" />
+                    <span className="text-sm">
+                      {row.name}
+                      {row.note ? <span className="block text-xs text-neutral-400">{row.note}</span> : null}
+                    </span>
+                    <span className="text-2xl font-semibold tabular-nums">{aud(cents(row.amountCents))}</span>
+                  </label>
+                </li>
+              ))}
+              {req.waiting.map((b) => (
+                <li key={b.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-4 py-4 text-sm text-neutral-400">
+                  <span className="h-4 w-4" />
+                  <span>{b.name}</span>
+                  <span>Waiting</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+          {error ? <p className="text-sm text-neutral-600">{error}</p> : null}
+          <Actions>
+            <Primary testId="accept" disabled={busy || !chosen || req.status !== "live"} onClick={() => void accept()}>
+              {chosen ? `Accept ${aud(cents(chosen.amountCents))} from ${chosen.name}` : "Accept a price"}
+            </Primary>
+            {req.status === "live" ? <Quiet onClick={() => void keep()}>Keep the car</Quiet> : <span className="text-sm text-neutral-500">You kept this car.</span>}
+          </Actions>
+          <p className="text-center text-xs text-neutral-400 sm:text-left">No fee. No countdown. Take your time.</p>
+        </Frame>
+      ) : null}
+    </LoadState>
   );
 }
 
 /* ---------- 5. Handover ---------- */
 
-function Contact({ title, c }: { title: string; c: { business: string; person: string; phone: string; email: string } }) {
+function Contact({ title, c }: { title: string; c: { business: string; person: string; phone: string | null; email: string } }) {
   return (
     <Section title={title}>
       <p className="text-base font-semibold">{c.business}</p>
       <div className="mt-2 space-y-1 text-sm text-neutral-500">
         <p>{c.person}</p>
-        <p>{c.phone}</p>
+        {c.phone ? <p>{c.phone}</p> : null}
         <p>{c.email}</p>
       </div>
     </Section>
@@ -407,17 +561,33 @@ function Contact({ title, c }: { title: string; c: { business: string; person: s
 }
 
 export function WholesaleHandoverPage() {
+  const [params] = useSearchParams();
+  const { state, resolved } = useRequest(params.get("code"));
+  const [done, setDone] = useState(false);
+  if (!resolved) return <Navigate to="/portal/wholesale/start" replace />;
   return (
-    <Frame testId="wholesale-handover" title="Sold to Macka for $30,500" sub="You've both got each other's details. Sort out pickup and payment directly.">
-      <div className="grid gap-6 sm:grid-cols-2">
-        <Contact title="Buyer" c={buyerContact} />
-        <Contact title="Your details (shared with the buyer)" c={dealerContact} />
-      </div>
-      <Actions>
-        <Primary>Mark as collected</Primary>
-        <Quiet>Report a problem</Quiet>
-      </Actions>
-    </Frame>
+    <LoadState state={state}>
+      {(r) => {
+        if (!r) return null;
+        if (r.status !== "accepted" || !r.buyer || !r.dealer) return <Navigate to={`/portal/wholesale/compare?code=${r.code}`} replace />;
+        const name = r.prices.find((x) => x.bidId === r.acceptedBidId)?.name ?? r.buyer.person;
+        const collected = done || r.outcome === "completed";
+        return (
+          <Frame testId="wholesale-handover" title={`Sold to ${name} for ${aud(cents(r.finalSaleCents))}`} sub="You've both got each other's details. Sort out pickup and payment directly.">
+            <div className="grid gap-6 sm:grid-cols-2">
+              <Contact title="Buyer" c={r.buyer} />
+              <Contact title="Your details (shared with the buyer)" c={r.dealer} />
+            </div>
+            <Actions>
+              {collected
+                ? <Status color={GREEN}>Marked as collected</Status>
+                : <Primary testId="collected" onClick={() => void wholesaleApi.collected(r.code).then(() => setDone(true))}>Mark as collected</Primary>}
+              <Quiet>Report a problem</Quiet>
+            </Actions>
+          </Frame>
+        );
+      }}
+    </LoadState>
   );
 }
 
@@ -433,36 +603,58 @@ function updateColor(status: DealerUpdate["status"]): string {
   }
 }
 
+const SYDNEY_TIME = new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+
 export function WholesaleUpdatesPage() {
+  const state = useLoad(() => wholesaleApi.updates(), []);
   return (
     <Frame testId="wholesale-updates" title="Updates">
-      <ol className="relative border-l border-neutral-200 pl-6" data-testid="timeline">
-        {dealerUpdates.map((u) => (
-          <li key={`${u.at}-${u.rego}`} className="relative py-3 text-sm">
-            <span className="absolute -left-[29px] top-[18px] block h-2.5 w-2.5 rounded-full" style={{ background: updateColor(u.status) }} />
-            <span className="grid gap-1 sm:grid-cols-[8rem_12rem_1fr] sm:gap-4">
-              <span className="text-xs text-neutral-400 sm:text-sm">{u.at}</span>
-              <span className="font-medium">{u.car}</span>
-              <span className="text-neutral-600">{u.text}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
+      <LoadState state={state}>
+        {(d) => d.updates.length === 0 ? <p className="text-sm text-neutral-400">Nothing yet.</p> : (
+          <ol className="relative border-l border-neutral-200 pl-6" data-testid="timeline">
+            {d.updates.map((u) => (
+              <li key={`${u.at}-${u.rego}-${u.text}`} className="relative py-3 text-sm">
+                <span className="absolute -left-[29px] top-[18px] block h-2.5 w-2.5 rounded-full" style={{ background: updateColor(u.status) }} />
+                <span className="grid gap-1 sm:grid-cols-[8rem_12rem_1fr] sm:gap-4">
+                  <span className="text-xs text-neutral-400 sm:text-sm">{SYDNEY_TIME.format(new Date(u.at)).replace(" am", "am").replace(" pm", "pm")}</span>
+                  <span className="font-medium">{u.car}</span>
+                  <span className="text-neutral-600">{u.text}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </LoadState>
     </Frame>
   );
 }
 
 /* ---------- 7. Buyer view ---------- */
 
-function BuyerChrome({ children }: { children: ReactNode }) {
+function useBuyerId() {
+  const [params, setParams] = useSearchParams();
+  const list = useLoad(() => wholesaleApi.buyerList(), []);
+  const asParam = params.get("as");
+  const current = asParam ?? list.data?.buyers[0]?.id ?? "";
+  return { current, buyers: list.data?.buyers ?? [], set: (id: string) => setParams({ as: id }, { replace: true }) };
+}
+
+function BuyerChrome({ children, as, buyers, onAs }: { children: ReactNode; as: string; buyers: Buyer[]; onAs: (id: string) => void }) {
+  const q = as ? `?as=${as}` : "";
   return (
     <div className="min-h-screen bg-white text-neutral-950">
       <header className="border-b border-neutral-200">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
-          <p className="text-sm font-semibold">Buyer desk</p>
+          <p className="text-sm font-semibold">Carbitrage · Buyer desk</p>
           <nav aria-label="Buyer" className="flex items-center gap-5 text-sm">
-            <NavLink to="/portal/buyer-view" className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")}>Cars</NavLink>
-            <NavLink to="/portal/buyer-prices" className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")} data-testid="link-my-prices">My prices</NavLink>
+            <NavLink to={`/portal/buyer-view${q}`} className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")}>Cars</NavLink>
+            <NavLink to={`/portal/buyer-prices${q}`} className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")} data-testid="link-my-prices">My prices</NavLink>
+            <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+              Preview as
+              <select value={as} onChange={(e) => onAs(e.target.value)} className="border border-neutral-200 bg-white px-1.5 py-1 text-xs text-neutral-700" data-testid="preview-as">
+                {buyers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
           </nav>
         </div>
       </header>
@@ -471,97 +663,94 @@ function BuyerChrome({ children }: { children: ReactNode }) {
   );
 }
 
-interface BuyerCar {
-  id: string;
-  title: string;
-  short: string;
-  km: number;
-  state: string;
-  franchise: boolean;
-  note: string;
-  myPrice: number | null;
-  locked: boolean;
-}
-
-const buyerCars: BuyerCar[] = [
-  { id: "rav4", title: carTitle, short: "2021 RAV4 GX Hybrid", km: tradeIn.odometerKm, state: tradeIn.state, franchise: true, note: tradeIn.notes, myPrice: null, locked: false },
-  { id: "hilux", title: "2019 Toyota Hilux SR5 4x4", short: "2019 Hilux SR5", km: 162000, state: "QLD", franchise: false, note: "Tow bar, canopy.", myPrice: 24100, locked: false },
-  { id: "cx5", title: "2019 Mazda CX-5 Maxx Sport", short: "2019 CX-5 Maxx Sport", km: 88300, state: "NSW", franchise: true, note: "One owner.", myPrice: 24800, locked: true },
-];
-
 export function WholesaleBuyerPage() {
-  const [selected, setSelected] = useState("rav4");
-  const car = buyerCars.find((c) => c.id === selected) ?? buyerCars[0];
+  const b = useBuyerId();
+  const state = useLoad(() => (b.current ? wholesaleApi.buyerCars(b.current) : Promise.resolve(null)), [b.current]);
+  const [selected, setSelected] = useState<string | null>(null);
   return (
-    <BuyerChrome>
-      <BuyerBody car={car} selected={selected} onSelect={setSelected} />
+    <BuyerChrome as={b.current} buyers={b.buyers} onAs={b.set}>
+      <Frame testId="wholesale-buyer" title="Cars to price" wide>
+        <LoadState state={state}>
+          {(d) => {
+            if (!d) return null;
+            if (d.cars.length === 0) return <p className="text-sm text-neutral-400" data-testid="no-cars">No cars to price right now.</p>;
+            const car = d.cars.find((c) => c.code === selected) ?? d.cars[0];
+            return <BuyerBody cars={d.cars} car={car} onSelect={setSelected} as={b.current} onSaved={state.reload} />;
+          }}
+        </LoadState>
+      </Frame>
     </BuyerChrome>
   );
 }
 
-function BuyerBody({ car, selected, onSelect }: { car: BuyerCar; selected: string; onSelect: (id: string) => void }) {
+function BuyerBody({ cars, car, onSelect, as, onSaved }: { cars: BuyerCar[]; car: BuyerCar; onSelect: (code: string) => void; as: string; onSaved: () => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const short = (c: BuyerCar) => `${c.year} ${c.model} ${c.badge}`;
+  async function submit() {
+    const dollars = Number(value.replace(/[^0-9]/g, ""));
+    if (!dollars) { setError("Enter a price"); return; }
+    setBusy(true); setError(null);
+    try { await wholesaleApi.buyerPrice(as, car.code, dollars); setValue(""); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save"); }
+    setBusy(false);
+  }
+  const my = cents(car.myPriceCents);
   return (
-    <Frame testId="wholesale-buyer" title="Cars to price" wide>
-      <div className="grid gap-8 md:grid-cols-[16rem_1fr]">
-        <ul className="divide-y divide-neutral-100 border-y border-neutral-200 md:self-start" data-testid="buyer-car-list">
-          {buyerCars.map((c) => (
-            <li key={c.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(c.id)}
-                data-testid={`buyer-car-${c.id}`}
-                className={`block w-full px-3 py-3 text-left ${selected === c.id ? "bg-neutral-100" : "hover:bg-neutral-50"}`}
-              >
-                <span className="flex items-center justify-between gap-2 text-sm font-medium">{c.short}{c.franchise ? <Franchise /> : null}</span>
-                <span className="mt-1 flex items-center gap-1.5 text-xs text-neutral-400">
-                  {c.locked ? <><LockIcon /> Locked · {aud(c.myPrice)}</> : c.myPrice ? `Your price ${aud(c.myPrice)}` : "Not priced"}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="space-y-6">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold">{car.title}</h2>
-              {car.franchise ? <Franchise /> : null}
-            </div>
-            <p className="mt-1 text-sm text-neutral-500">{km(car.km)} · {car.franchise ? "Franchise dealer" : "Used car yard"}, {car.state}</p>
-            <p className="mt-3 text-sm" data-testid="buyer-dealer-note">“{car.note}”</p>
+    <div className="grid gap-8 md:grid-cols-[16rem_1fr]">
+      <ul className="divide-y divide-neutral-100 border-y border-neutral-200 md:self-start" data-testid="buyer-car-list">
+        {cars.map((c) => (
+          <li key={c.code}>
+            <button
+              type="button"
+              onClick={() => onSelect(c.code)}
+              data-testid={`buyer-car-${c.code}`}
+              className={`block w-full px-3 py-3 text-left ${car.code === c.code ? "bg-neutral-100" : "hover:bg-neutral-50"}`}
+            >
+              <span className="flex items-center justify-between gap-2 text-sm font-medium">{short(c)}{c.franchise ? <Franchise /> : null}</span>
+              <span className="mt-1 flex items-center gap-1.5 text-xs text-neutral-400">
+                {c.locked ? <><LockIcon /> Locked · {aud(cents(c.myPriceCents))}</> : c.myPriceCents ? `Your price ${aud(cents(c.myPriceCents))}` : "Not priced"}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="space-y-6">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">{carTitleOf(car)}</h2>
+            {car.franchise ? <Franchise /> : null}
           </div>
-          {car.id === "rav4" ? <GuideBlock forBuyer /> : null}
-          <Section title="Your price">
-            {car.locked ? (
-              <div data-testid="locked-price-box">
-                <input disabled value={new Intl.NumberFormat("en-AU").format(car.myPrice ?? 0)} aria-label="Your price (locked)" className="block min-h-12 w-full max-w-xs cursor-not-allowed border border-neutral-200 bg-neutral-50 px-3 text-base text-neutral-400" />
-                <p className="mt-3 flex items-center gap-1.5 text-sm font-medium"><LockIcon /> Price locked, dealer has picked a buyer</p>
-              </div>
-            ) : (
-              <div data-testid="editable-price-box">
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <input placeholder={car.myPrice ? new Intl.NumberFormat("en-AU").format(car.myPrice) : "e.g. 30,000"} aria-label="Your price" className="block min-h-12 w-full max-w-xs border border-neutral-300 px-3 text-base" />
-                  <Primary>{car.myPrice ? "Update price" : "Send price"}</Primary>
-                </div>
-                <p className="mt-3 text-xs text-neutral-400">Private. You can change it until the dealer picks.</p>
-              </div>
-            )}
-          </Section>
+          <p className="mt-1 text-sm text-neutral-500" data-testid="seller-label">{km(car.km)} · {car.sellerLabel}</p>
+          {car.note ? <p className="mt-3 text-sm" data-testid="buyer-dealer-note">“{car.note}”</p> : null}
         </div>
+        {car.guide ? <GuideBlock forBuyer guide={car.guide} car={car} /> : null}
+        <Section title="Your price">
+          {car.locked ? (
+            <div data-testid="locked-price-box">
+              <input disabled value={new Intl.NumberFormat("en-AU").format(my ?? 0)} aria-label="Your price (locked)" className="block min-h-12 w-full max-w-xs cursor-not-allowed border border-neutral-200 bg-neutral-50 px-3 text-base text-neutral-400" />
+              <p className="mt-3 flex items-center gap-1.5 text-sm font-medium"><LockIcon /> Price locked, dealer has picked a buyer</p>
+            </div>
+          ) : (
+            <div data-testid="editable-price-box">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input value={value} onChange={(e) => setValue(e.target.value)} placeholder={my ? new Intl.NumberFormat("en-AU").format(my) : "e.g. 30,000"} aria-label="Your price" data-testid="price-input" className="block min-h-12 w-full max-w-xs border border-neutral-300 px-3 text-base" />
+                <Primary testId="send-price" disabled={busy} onClick={() => void submit()}>{my ? "Update price" : "Send price"}</Primary>
+              </div>
+              {error ? <p className="mt-3 text-xs text-neutral-600">{error}</p> : null}
+              <p className="mt-3 text-xs text-neutral-400">Private. You can change it until the dealer picks.</p>
+            </div>
+          )}
+        </Section>
       </div>
-    </Frame>
+    </div>
   );
 }
 
 /* ---------- 8. My prices ---------- */
 
-const SYDNEY = new Intl.DateTimeFormat("en-AU", {
-  timeZone: "Australia/Sydney",
-  day: "numeric",
-  month: "short",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
-});
+const SYDNEY = new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
 
 function sydney(iso: string): string {
   return SYDNEY.format(new Date(iso)).replace(" am", "am").replace(" pm", "pm");
@@ -571,12 +760,7 @@ function sydneyDay(iso: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 }
 
-const OUTCOME_LABEL: Record<PriceOutcome, string> = {
-  open: "Open",
-  picked: "Picked",
-  not_picked: "Not picked",
-  dealer_kept: "Dealer kept it",
-};
+const OUTCOME_LABEL: Record<PriceOutcome, string> = { open: "Open", picked: "Picked", not_picked: "Not picked", dealer_kept: "Dealer kept it" };
 
 function OutcomeText({ outcome }: { outcome: PriceOutcome }) {
   if (outcome === "picked") return <Status color={GREEN}>Picked</Status>;
@@ -584,11 +768,19 @@ function OutcomeText({ outcome }: { outcome: PriceOutcome }) {
   return <span className="text-xs text-neutral-500">{OUTCOME_LABEL[outcome]}</span>;
 }
 
-function HistoryRow({ row }: { row: BuyerPriceHistoryRow }) {
+function HistoryItem({ row, as, onSaved }: { row: HistoryRow; as: string; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const latest = row.events[row.events.length - 1];
   const earlier = row.events.slice(0, -1).reverse();
   const locked = row.outcome !== "open";
+  async function save() {
+    const dollars = Number(value.replace(/[^0-9]/g, ""));
+    if (!dollars) return;
+    try { await wholesaleApi.buyerPrice(as, row.ref, dollars); setEditing(false); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save"); }
+  }
   return (
     <li className="grid gap-3 py-5 sm:grid-cols-[1fr_12rem_7rem_12rem] sm:items-start sm:gap-6" data-testid="price-history-row">
       <div>
@@ -617,8 +809,9 @@ function HistoryRow({ row }: { row: BuyerPriceHistoryRow }) {
           </span>
         ) : editing ? (
           <span className="flex gap-2" data-testid="editable-price-box">
-            <input defaultValue={new Intl.NumberFormat("en-AU").format(latest.amount)} aria-label="New price" className="min-h-9 w-24 border border-neutral-300 px-2 text-sm" />
-            <button type="button" onClick={() => setEditing(false)} className="min-h-9 bg-neutral-950 px-3 text-white">Save</button>
+            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder={new Intl.NumberFormat("en-AU").format(latest.amount)} aria-label="New price" className="min-h-9 w-24 border border-neutral-300 px-2 text-sm" />
+            <button type="button" onClick={() => void save()} className="min-h-9 bg-neutral-950 px-3 text-white">Save</button>
+            {error ? <span className="text-neutral-500">{error}</span> : null}
           </span>
         ) : (
           <span data-testid="editable-price-box"><Quiet onClick={() => setEditing(true)}>Change price</Quiet></span>
@@ -629,20 +822,22 @@ function HistoryRow({ row }: { row: BuyerPriceHistoryRow }) {
 }
 
 export function BuyerPriceHistoryPage() {
-  const [from, setFrom] = useState("2026-11-17");
-  const [to, setTo] = useState("2026-11-20");
+  const b = useBuyerId();
+  const state = useLoad(() => (b.current ? wholesaleApi.buyerHistory(b.current) : Promise.resolve(null)), [b.current]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [outcome, setOutcome] = useState<"all" | PriceOutcome>("all");
-  const rows = useMemo(() => buyerPriceHistory.filter((row) => {
+  const rows = useMemo(() => (state.data?.rows ?? []).filter((row) => {
     const first = sydneyDay(row.events[0].at);
     const last = sydneyDay(row.events[row.events.length - 1].at);
     if (from && last < from) return false;
     if (to && first > to) return false;
     if (outcome !== "all" && row.outcome !== outcome) return false;
     return true;
-  }), [from, to, outcome]);
+  }), [state.data, from, to, outcome]);
   const field = "mt-1 block min-h-10 w-full border border-neutral-300 bg-white px-2 text-sm";
   return (
-    <BuyerChrome>
+    <BuyerChrome as={b.current} buyers={b.buyers} onAs={b.set}>
       <Frame testId="buyer-price-history" title="My prices" sub="Every price you've given, in Sydney time. Only you can see this." wide>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-[10rem_10rem_12rem]" data-testid="price-history-filters">
           <label className="text-xs text-neutral-500">From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} /></label>
@@ -655,7 +850,7 @@ export function BuyerPriceHistoryPage() {
           </label>
         </div>
         <ul className="divide-y divide-neutral-100 border-y border-neutral-200">
-          {rows.map((row) => <HistoryRow key={row.ref} row={row} />)}
+          {rows.map((row) => <HistoryItem key={row.ref} row={row} as={b.current} onSaved={state.reload} />)}
         </ul>
         {rows.length === 0 ? <p className="py-6 text-center text-sm text-neutral-400">No prices match.</p> : null}
       </Frame>

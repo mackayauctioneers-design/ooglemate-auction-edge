@@ -1,0 +1,105 @@
+{
+ "version": "vc-2026-11-19.1",
+ "floor_car": {
+  "title": "2022 Porsche Macan S",
+  "year": 2022,
+  "badge": "S",
+  "series": null,
+  "drivetrain": "AWD",
+  "km": 94273,
+  "price_ex_gov": 82990,
+  "km_adjusted_price": 82990,
+  "state": null,
+  "link": "https://www.carsales.com.au/cars/details/2022-porsche-macan-s-95b-auto-awd-my22/OAG-AD-26319402/",
+  "match": null
+ },
+ "floor_dollars": 82990,
+ "buy_target": 70400,
+ "max_buy": 71400,
+ "thinking": 71400,
+ "cautious": 70400,
+ "confidence": {
+  "score": 85,
+  "label": "high"
+ },
+ "provisional": false,
+ "thin_evidence": null,
+ "state": null,
+ "comps": [
+  {
+   "title": "2022 Porsche Macan S",
+   "year": 2022,
+   "badge": null,
+   "series": null,
+   "drivetrain": "AWD",
+   "km": 59986,
+   "price_ex_gov": 82990,
+   "km_adjusted_price": 80600,
+   "state": null,
+   "link": "https://www.carsales.com.au/cars/details/2022-porsche-macan-s-95b-auto-awd-my22/OAG-AD-26442391/",
+   "match": "exact_spec"
+  },
+  {
+   "title": "2022 Porsche Macan S",
+   "year": 2022,
+   "badge": null,
+   "series": null,
+   "drivetrain": "AWD",
+   "km": 44300,
+   "price_ex_gov": 84995,
+   "km_adjusted_price": 81210,
+   "state": null,
+   "link": "https://www.carsales.com.au/cars/details/2022-porsche-macan-s-95b-auto-awd-my22/OAG-AD-26373915/",
+   "match": "exact_spec"
+  },
+  {
+   "title": "2022 Porsche Macan S",
+   "year": 2022,
+   "badge": null,
+   "series": null,
+   "drivetrain": "AWD",
+   "km": 50432,
+   "price_ex_gov": 88490,
+   "km_adjusted_price": 85090,
+   "state": null,
+   "link": "https://www.carsales.com.au/cars/details/2022-porsche-macan-s-95b-auto-awd-my22/OAG-AD-26347700/",
+   "match": "exact_spec"
+  },
+  {
+   "title": "2022 Porsche Macan S",
+   "year": 2022,
+   "badge": null,
+   "series": null,
+   "drivetrain": "AWD",
+   "km": 18812,
+   "price_ex_gov": 88990,
+   "km_adjusted_price": 82760,
+   "state": null,
+   "link": "https://www.carsales.com.au/cars/details/2022-porsche-macan-s-95b-auto-awd-my22/OAG-AD-26346985/",
+   "match": "exact_spec"
+  },
+  {
+   "title": "2022 Porsche Macan S",
+   "year": 2022,
+   "badge": null,
+   "series": null,
+   "drivetrain": "AWD",
+   "km": 35783,
+   "price_ex_gov": 89880,
+   "km_adjusted_price": 85110,
+   "state": null,
+   "link": "https://www.carsales.com.au/cars/details/2022-porsche-macan-s-95b-auto-awd-my23/OAG-AD-26320721/",
+   "match": "exact_spec"
+  }
+ ],
+ "generated_at": "2026-11-20T01:10:25.000Z",
+ "floor_basis": "exact_year",
+ "year_below": {
+  "price_ex_gov": 84800,
+  "year": 2021,
+  "km": 47850,
+  "link": "https://www.carsales.com.au/cars/details/2021-porsche-macan-s-95b-auto-awd-my22/OAG-AD-26525395/",
+  "source": "Carbitrage",
+  "note": "reference only, one plate year below: never sets the floor or the buy figures"
+ }
+}

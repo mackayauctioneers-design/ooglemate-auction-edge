@@ -5,6 +5,7 @@ import carbitrageMarkLight from "@/assets/carbitrage-mark-light.png";
 import { ApiError, portalApi } from "./api";
 import type { Me } from "./types";
 import { PortalError, PortalLoading } from "./states";
+import { wholesaleApi } from "./wholesale/api";
 
 const LINKS = [
   { to: "/portal/finds", label: "Finds" },
@@ -22,6 +23,7 @@ export default function Shell() {
   const quiet = location.pathname.startsWith("/portal/wholesale");
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [testDealer, setTestDealer] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +43,12 @@ export default function Shell() {
       active = false;
     };
   }, [navigate]);
+
+  useEffect(() => {
+    if (!quiet) return;
+    // On the wholesale screens the header names the labelled preview dealer, never a real dealership.
+    wholesaleApi.info().then((i) => setTestDealer(i.dealer.name)).catch(() => undefined);
+  }, [quiet]);
 
   async function signOut() {
     await portalApi.logout().catch(() => undefined);
@@ -66,12 +74,15 @@ export default function Shell() {
         <header className="border-b border-neutral-200" data-testid="quiet-header">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <img src={carbitrageMarkLight} alt="Carbitrage" className="h-6 w-auto object-contain" />
-              <span className="truncate text-sm font-semibold">{yardName}</span>
+              <img src={carbitrageMarkLight} alt="" className="h-6 w-auto object-contain" />
+              <span className="text-sm font-semibold tracking-tight" data-testid="logo-text">Carbitrage</span>
             </div>
-            <button type="button" onClick={signOut} className="shrink-0 text-xs text-neutral-400 hover:text-neutral-950">
-              Sign out
-            </button>
+            <div className="flex min-w-0 items-center gap-4">
+              <span className="truncate text-xs text-neutral-400" data-testid="dealer-name">{testDealer ?? yardName}</span>
+              <button type="button" onClick={signOut} className="shrink-0 text-xs text-neutral-400 hover:text-neutral-950">
+                Sign out
+              </button>
+            </div>
           </div>
           <nav aria-label="Portal" className="mx-auto flex max-w-5xl gap-5 overflow-x-auto whitespace-nowrap px-4 pb-2.5 text-sm [scrollbar-width:none]">
             {LINKS.map((link) => (

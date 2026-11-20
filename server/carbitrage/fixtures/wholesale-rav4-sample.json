@@ -1,0 +1,128 @@
+{
+ "_fixture": "SAMPLE with the real value_car output shape. Figures are illustrative, links are example.invalid. Not a recorded engine run.",
+ "version": "vc-2026-11-19.1",
+ "car": {
+  "year": 2021,
+  "make": "Toyota",
+  "model": "RAV4",
+  "badge": "GX Hybrid 2WD",
+  "series": null,
+  "km": 58400,
+  "drivetrain": null
+ },
+ "floor_car": {
+  "title": "2021 Toyota RAV4 GX Hybrid 2WD",
+  "year": 2021,
+  "badge": "GX Hybrid 2WD",
+  "km": 66900,
+  "series": null,
+  "drivetrain": "2WD",
+  "price_ex_gov": 35200,
+  "km_adjusted_price": 35600,
+  "km_diff": 8500,
+  "link": "https://example.invalid/ads/2021-rav4-gx-hybrid-66900km"
+ },
+ "comps": [
+  {
+   "title": "2021 Toyota RAV4 GX Hybrid 2WD",
+   "link": "https://example.invalid/ads/2021-rav4-gx-hybrid-66900km",
+   "price_ex_gov": 35200,
+   "km_adjusted_price": 35600,
+   "km_diff": 8500,
+   "km": 66900,
+   "year": 2021,
+   "drivetrain": "2WD",
+   "series": null,
+   "match": "exact_spec"
+  },
+  {
+   "title": "2021 Toyota RAV4 GX Hybrid 2WD",
+   "link": "https://example.invalid/ads/2021-rav4-61300km",
+   "price_ex_gov": 35990,
+   "km_adjusted_price": 36100,
+   "km_diff": 2900,
+   "km": 61300,
+   "year": 2021,
+   "drivetrain": "2WD",
+   "series": null,
+   "match": "exact_spec"
+  },
+  {
+   "title": "2021 Toyota RAV4 GX Hybrid 2WD",
+   "link": "https://example.invalid/ads/2021-rav4-70100km",
+   "price_ex_gov": 36450,
+   "km_adjusted_price": 36900,
+   "km_diff": 11700,
+   "km": 70100,
+   "year": 2021,
+   "drivetrain": "2WD",
+   "series": null,
+   "match": "exact_spec"
+  },
+  {
+   "title": "2021 Toyota RAV4 GX Hybrid 2WD",
+   "link": "https://example.invalid/ads/2021-rav4-52000km",
+   "price_ex_gov": 37480,
+   "km_adjusted_price": 37100,
+   "km_diff": -6400,
+   "km": 52000,
+   "year": 2021,
+   "drivetrain": "2WD",
+   "series": null,
+   "match": "exact_spec"
+  },
+  {
+   "title": "2021 Toyota RAV4 GX Hybrid 2WD",
+   "link": "https://example.invalid/ads/2021-rav4-72800km",
+   "price_ex_gov": 37990,
+   "km_adjusted_price": 38500,
+   "km_diff": 14400,
+   "km": 72800,
+   "year": 2021,
+   "drivetrain": "2WD",
+   "series": null,
+   "match": "exact_spec"
+  }
+ ],
+ "same_shape_fallback": false,
+ "provisional": false,
+ "range": null,
+ "buy_target": 29600,
+ "max_buy": 30600,
+ "likely_retail": 35200,
+ "confidence": {
+  "score": 85,
+  "label": "high"
+ },
+ "needs_live_search": false,
+ "coverage_reason": null,
+ "route": "db_instant",
+ "floor_basis": "exact_year",
+ "engine": "sample",
+ "year_below": {
+  "price_ex_gov": 32990,
+  "year": 2020,
+  "km": 63800,
+  "link": "https://example.invalid/ads/2020-rav4-63800km",
+  "source": "Carbitrage",
+  "note": "reference only, one plate year below: never sets the floor or the buy figures"
+ },
+ "outlier_ads": [
+  {
+   "price_ex_gov": 29490,
+   "year": 2021,
+   "km": 64100,
+   "link": "https://example.invalid/ads/2021-rav4-64100km-outlier",
+   "source": "Carbitrage",
+   "gap_pct": 16,
+   "gap_pct_raw": 16,
+   "sets_floor_if_trusted": true,
+   "next_cheapest": {
+    "price_ex_gov": 35200,
+    "km": 66900,
+    "year": 2021
+   },
+   "note": "left out of the floor: far under the other comparable ads with nothing close to back it up. Check it, it may be a buy"
+  }
+ ]
+}

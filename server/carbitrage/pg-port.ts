@@ -33,6 +33,19 @@ export async function applyCanonicalSchema(connectionString: string): Promise<vo
   }
 }
 
+/** Preview only. Creates the local mirror of the wholesale tables and labelled test rows in the disposable database. */
+export async function applyWholesaleMirror(connectionString: string): Promise<void> {
+  assertDisposableDatabaseUrl(connectionString);
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    const sql = readFileSync(new URL("../../supabase/drafts/20261120_preview_wholesale_mirror.sql", import.meta.url), "utf8");
+    await client.query(sql);
+  } finally {
+    await client.end();
+  }
+}
+
 export function createPgPort(connectionString: string): DataPort & { close: () => Promise<void>; pool: pg.Pool } {
   assertDisposableDatabaseUrl(connectionString);
   const pool = new Pool({ connectionString, max: 8 });

@@ -6,8 +6,9 @@ import { resolveRuntimeFlags } from "./auth.ts";
 import { assertPreviewIsolated, loadPreviewGateSecret } from "./preview-guard.ts";
 import { seedDemo } from "./fixtures.ts";
 import { startCarbitrageServer, type AuthDirectory } from "./http.ts";
-import { applyCanonicalSchema, assertDisposableDatabaseUrl, createPgPort, lookupApiKeyUser, lookupDemoPassword, lookupIngestPrincipal, seedCanonicalDatabase } from "./pg-port.ts";
+import { applyCanonicalSchema, applyWholesaleMirror, assertDisposableDatabaseUrl, createPgPort, lookupApiKeyUser, lookupDemoPassword, lookupIngestPrincipal, seedCanonicalDatabase } from "./pg-port.ts";
 import { MemoryStore } from "./store.ts";
+import { createWholesale } from "./wholesale.ts";
 
 const flags = resolveRuntimeFlags(process.env);
 const databaseUrl = process.env.CARBITRAGE_DATABASE_URL?.trim() || readLocal("database-url");
@@ -22,6 +23,7 @@ if (flags.preview) assertPreviewIsolated(process.env);
 const previewGate = flags.preview ? { secret: loadPreviewGateSecret(process.env.CARBITRAGE_PREVIEW_GATE_FILE ?? "") } : null;
 
 await applyCanonicalSchema(migrateUrl);
+if (flags.preview) await applyWholesaleMirror(migrateUrl);
 const admin = new pg.Client({ connectionString: migrateUrl });
 await admin.connect();
 if (flags.demoMode) {
@@ -36,6 +38,17 @@ if (flags.demoMode) {
 }
 await admin.end();
 const port = createPgPort(databaseUrl);
+// Preview only: the franchise wholesale mirror lives in the same disposable local database. The only outbound call is an
+// optional read-only GET to the Carbitrage Market API, and only when both settings below are present.
+const marketUrl = process.env.CARBITRAGE_MARKET_API_URL?.trim();
+const marketKeyFile = process.env.CARBITRAGE_MARKET_API_KEY_FILE?.trim();
+const wholesale = flags.preview
+  ? createWholesale({
+      pool: new pg.Pool({ connectionString: migrateUrl, max: 4 }),
+      market: marketUrl && marketKeyFile ? { baseUrl: marketUrl, keyFile: marketKeyFile } : null,
+      now: () => new Date(),
+    })
+  : null;
 
 const directory: AuthDirectory = {
   async demoPassword(email) {
@@ -62,6 +75,7 @@ const server = await startCarbitrageServer(
     persistence: "postgres",
     now: () => DEMO_NOW,
     previewGate,
+    wholesale,
     staticRoot: flags.preview ? (process.env.CARBITRAGE_STATIC_ROOT ?? "dist") : null,
   },
   Number(process.env.CARBITRAGE_PORT ?? 8787),

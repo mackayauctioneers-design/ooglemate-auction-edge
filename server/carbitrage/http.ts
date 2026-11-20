@@ -8,6 +8,7 @@ import { handleMcp, toolCatalog } from "./mcp.ts";
 import { createServices, type IngestBody } from "./services.ts";
 import { previewGateAllows, previewGateCookie, previewGatePage, previewPasswordMatches } from "./preview-guard.ts";
 import type { DataPort } from "./store.ts";
+import type { Wholesale } from "./wholesale.ts";
 
 export interface AuthDirectory {
   demoPassword(email: string): Promise<{ userId: string; passwordHash: string; passwordSalt: string; displayName: string } | null>;
@@ -27,6 +28,8 @@ export interface ServerOptions {
   now: () => Date;
   previewGate?: { secret: string } | null;
   staticRoot?: string | null;
+  /** Preview-only franchise wholesale API (local mirror tables). Null outside the private preview. */
+  wholesale?: Wholesale | null;
 }
 
 export function memoryDirectory(store: Store): AuthDirectory {
@@ -76,6 +79,9 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     if (opts.previewGate && !(await allowPreview(opts.previewGate.secret, req, res, path))) {
       return;
     }
+
+    // Deploy-time patch (preview only): the gate has already passed, so serve the built site before the sign-in check.
+    if (req.method === "GET" && opts.staticRoot && !path.startsWith("/api/") && path !== "/mcp" && !path.startsWith("/.well-known/") && serveStatic(opts.staticRoot, path, res)) return;
 
     if (req.method === "GET" && path === "/api/carbitrage/health") {
       return send(res, 200, {
@@ -163,6 +169,16 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
       const principal = await bearerPrincipal(opts, req, "ingest");
       const result = await services.ingest(principal, asIngest(await readJson(req)));
       return send(res, 200, result);
+    }
+
+    if (path.startsWith("/api/wholesale/")) {
+      if (!opts.wholesale || !opts.previewGate) throw new ServiceError(404, "not_found", "Wholesale preview is not enabled");
+      const sub = path.slice("/api/wholesale".length);
+      const isBuyer = sub.startsWith("/buyer/");
+      if (!isBuyer) await userPrincipal(opts, req);
+      const body = req.method === "POST" ? await readJson(req).catch(() => ({} as Record<string, unknown>)) : {};
+      const out = await opts.wholesale.handle(isBuyer ? "buyer" : "dealer", req.method ?? "GET", sub, url.searchParams, body);
+      return send(res, out.status, out.body);
     }
 
     const user = await userPrincipal(opts, req);

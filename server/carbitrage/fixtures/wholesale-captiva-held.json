@@ -1,0 +1,35 @@
+{
+ "_fixture": "SAMPLE of the held (no floor) shape: status no_floor, no figures, needs_live_search true. Not a recorded engine run.",
+ "version": "vc-2026-11-19.1",
+ "car": {
+  "year": 2016,
+  "make": "Holden",
+  "model": "Captiva",
+  "badge": "LTZ AWD",
+  "series": null,
+  "km": 141200,
+  "drivetrain": null
+ },
+ "status": "no_floor",
+ "floor_car": null,
+ "comps": [],
+ "provisional": true,
+ "buy_target": null,
+ "max_buy": null,
+ "likely_retail": null,
+ "confidence": {
+  "score": 20,
+  "label": "low"
+ },
+ "needs_live_search": true,
+ "coverage_reason": "pre_2020",
+ "route": "live",
+ "route_reason": [
+  "pre_2020"
+ ],
+ "floor_basis": null,
+ "engine": "sample",
+ "n_exact_year": 1,
+ "year_below": null,
+ "outlier_ads": []
+}
