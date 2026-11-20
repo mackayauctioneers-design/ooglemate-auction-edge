@@ -227,7 +227,7 @@ create table if not exists preview_wholesale_held (
 insert into dealerships (id, name, slug, address, phone, email) values
   ('00000000-0000-4000-8000-00000000fa01', 'Preview Test Dealer (not a real dealership)', 'preview-test-dealer', '1 Example St, Example NSW 2000', '0400 000 000', 'test@dealer.example.invalid')
 on conflict (id) do nothing;
-insert into dealership_features (dealership_id, feature_key, enabled) values ('00000000-0000-4000-8000-00000000fa01', 'wholesale_pricing', true);
+insert into dealership_features (dealership_id, feature_key, enabled) values ('00000000-0000-4000-8000-00000000fa01', 'carbitrage_franchise_wholesale', true);
 -- Preview sign-ins map to these fixed ids. They are not Supabase users.
 insert into dealership_members (dealership_id, user_id, role) values ('00000000-0000-4000-8000-00000000fa01', '00000000-0000-4000-8000-0000000d0001', 'owner') on conflict do nothing;
 

@@ -92,8 +92,9 @@ test("dealer scoping: only a wholesale dealer member can act", { skip: !base }, 
   assert.equal(await status(call("dealer", null, "GET", "/requests")), 401);
   // a buyer's sign-in is not a dealer
   assert.equal(await status(call("dealer", BUYER(1), "GET", "/requests")), 403);
-  // a member of a dealership without wholesale_pricing is not a dealer
+  // a member of a dealership with only the ordinary wholesale_pricing feature (an Ooglecars yard) is not a franchise dealer
   await q("insert into dealerships (id, name, slug) values ('22222222-2222-4222-8222-222222222222', 'Other', 'other')");
+  await q("insert into dealership_features (dealership_id, feature_key, enabled) values ('22222222-2222-4222-8222-222222222222', 'wholesale_pricing', true)");
   await q("insert into dealership_members (dealership_id, user_id) values ('22222222-2222-4222-8222-222222222222', $1)", [OUTSIDER]);
   assert.equal(await status(call("dealer", OUTSIDER, "GET", "/requests")), 403);
   const mine = (await call("dealer", DEALER, "GET", "/requests")).body as { requests: unknown[] };
@@ -174,6 +175,8 @@ test("preview picker is refused outside preview", { skip: !base }, async (t) => 
 test("undo files put everything back (and refuse while franchise requests exist)", { skip: !base }, async (t) => {
   if (!ok) return t.skip();
   const sql = (n: string) => readFileSync(new URL(`../../supabase/pending/${n}`, import.meta.url), "utf8");
+  await q(sql("carbitrage-wholesale-0003-franchise-feature.undo.sql"));
+  assert.match((await q("select pg_get_functiondef('public.carbitrage_wholesale_dealership_v1(uuid)'::regprocedure) d")).rows[0].d, /wholesale_pricing/);
   await q(sql("carbitrage-wholesale-0002-rpc-v1.undo.sql"));
   assert.equal((await q("select count(*)::int n from pg_proc where proname like 'carbitrage_wholesale_%'")).rows[0].n, 0);
   await assert.rejects(q(sql("carbitrage-wholesale-0001-franchise-columns.undo.sql")), /franchise or targeted requests exist/);
@@ -190,5 +193,6 @@ test("undo files put everything back (and refuse while franchise requests exist)
   await q("delete from wholesale_buyer_alerts; delete from wholesale_tenders");
   await q(sql("carbitrage-wholesale-0001-franchise-columns.sql"));
   await q(sql("carbitrage-wholesale-0002-rpc-v1.sql"));
+  await q(sql("carbitrage-wholesale-0003-franchise-feature.sql"));
   assert.equal((await q("select enabled from carbitrage_switches")).rows[0].enabled, false);
 });

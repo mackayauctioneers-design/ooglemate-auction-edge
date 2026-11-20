@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
-import { sha256, verifyPassword, SESSION_COOKIE, clearSessionCookie, readCookie, readSession, sessionCookie, signSession, verifySupabaseJwt } from "./auth.ts";
+import { sha256, verifyPassword, SESSION_COOKIE, clearSessionCookie, readCookie, readSession, sessionCookie, signSession, verifySupabaseJwt, type JwtClaims, type JwtVerifier } from "./auth.ts";
 import { ServiceError, type Principal, type Store } from "./domain.ts";
 import { PERSONAS, type Persona } from "./fixtures.ts";
 import { handleMcp, toolCatalog } from "./mcp.ts";
@@ -22,6 +22,8 @@ export interface ServerOptions {
   sessionSecret: string;
   demoMode: boolean;
   jwtSecret: string | null;
+  /** Public-key (JWKS) verification of Supabase user tokens. Preferred: no secret held. */
+  jwtVerifier?: JwtVerifier | null;
   oauthIssuer: string | null;
   oauthResourceUrl: string | null;
   persistence: "postgres" | "memory";
@@ -90,7 +92,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         ok: true,
         product: "carbitrage",
         demoMode: opts.demoMode,
-        supabaseSignIn: Boolean(opts.jwtSecret),
+        supabaseSignIn: Boolean(opts.jwtSecret || opts.jwtVerifier),
         billingEnabled: false,
         persistence: opts.persistence,
         hostedOauth: Boolean(opts.oauthIssuer && opts.oauthResourceUrl),
@@ -120,8 +122,8 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         throw new ServiceError(400, "invalid_payload", "Membership claims are not accepted from the client");
       }
       if (typeof body.accessToken === "string") {
-        if (!opts.jwtSecret) throw new ServiceError(503, "auth_not_configured", "SUPABASE_JWT_SECRET is not set");
-        const claims = verifySupabaseJwt(body.accessToken, opts.jwtSecret, opts.now());
+        const claims = await verifyAccessToken(opts, body.accessToken);
+        if (claims === "not_configured") throw new ServiceError(503, "auth_not_configured", "Sign-in verification is not configured");
         if (!claims) throw new ServiceError(401, "unauthenticated", "Access token was rejected");
         res.setHeader("Set-Cookie", sessionCookie(signSession(claims.sub, opts.sessionSecret, opts.now())));
         return send(res, 200, { ok: true, auth: "supabase_jwt" });
@@ -274,6 +276,12 @@ async function userPrincipal(opts: ServerOptions, req: IncomingMessage): Promise
   return { kind: "user", userId };
 }
 
+async function verifyAccessToken(opts: ServerOptions, token: string): Promise<JwtClaims | null | "not_configured"> {
+  if (opts.jwtVerifier) return opts.jwtVerifier.verify(token, opts.now());
+  if (opts.jwtSecret) return verifySupabaseJwt(token, opts.jwtSecret, opts.now());
+  return "not_configured";
+}
+
 async function bearerPrincipal(opts: ServerOptions, req: IncomingMessage, expect: "user" | "ingest"): Promise<Principal> {
   const header = req.headers.authorization;
   if (!header || !header.toLowerCase().startsWith("bearer ")) {
@@ -293,9 +301,8 @@ async function bearerPrincipal(opts: ServerOptions, req: IncomingMessage, expect
     if (!userId) throw new ServiceError(401, "unauthenticated", "API key rejected");
     return { kind: "user", userId };
   }
-  if (!opts.jwtSecret) throw new ServiceError(401, "unauthenticated", "Bearer token was rejected");
-  const claims = verifySupabaseJwt(token, opts.jwtSecret, opts.now());
-  if (!claims) throw new ServiceError(401, "unauthenticated", "Bearer token was rejected");
+  const claims = await verifyAccessToken(opts, token);
+  if (claims === "not_configured" || !claims) throw new ServiceError(401, "unauthenticated", "Bearer token was rejected");
   return { kind: "user", userId: claims.sub };
 }
 

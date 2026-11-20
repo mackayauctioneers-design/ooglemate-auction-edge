@@ -2,7 +2,7 @@ import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { DEMO_NOW } from "./domain.ts";
-import { resolveRuntimeFlags } from "./auth.ts";
+import { createJwksVerifier, resolveRuntimeFlags } from "./auth.ts";
 import { assertPreviewIsolated, loadPreviewGateSecret } from "./preview-guard.ts";
 import { seedDemo } from "./fixtures.ts";
 import { startCarbitrageServer, type AuthDirectory } from "./http.ts";
@@ -44,6 +44,10 @@ const marketUrl = process.env.CARBITRAGE_MARKET_API_URL?.trim();
 const marketKeyFile = process.env.CARBITRAGE_MARKET_API_KEY_FILE?.trim();
 const market = marketUrl && marketKeyFile ? { baseUrl: marketUrl, keyFile: marketKeyFile, cacheFile: process.env.CARBITRAGE_MARKET_API_CACHE_FILE?.trim() || undefined, cacheOnly: process.env.CARBITRAGE_MARKET_API_CACHE_ONLY === "1" } : null;
 const PREVIEW_DEALER_USER = "00000000-0000-4000-8000-0000000d0001";
+// Production sign-in is checked against the Supabase project's PUBLIC signing keys, so no JWT secret is held on the server.
+const jwksUrl = process.env.CARBITRAGE_SUPABASE_JWKS_URL?.trim();
+const jwtIssuer = process.env.CARBITRAGE_SUPABASE_ISSUER?.trim();
+const jwtVerifier = !flags.preview && jwksUrl && jwtIssuer ? createJwksVerifier({ jwksUrl, issuer: jwtIssuer }) : null;
 let wholesale: ReturnType<typeof createWholesale> | null = null;
 let wholesaleUser: ((userId: string) => Promise<string>) | null = null;
 if (flags.preview) {
@@ -57,8 +61,8 @@ if (flags.preview) {
 } else if (process.env.CARBITRAGE_WHOLESALE_DATABASE_URL) {
   // Go-live wiring, NOT enabled anywhere yet. Needs the pending migrations applied, a service-role connection string and the
   // Supabase JWT secret. Callers are identified only by their verified Supabase sign-in.
-  if (process.env.CARBITRAGE_WHOLESALE_GO_LIVE !== "1" || !flags.jwtSecret) {
-    throw new Error("CARBITRAGE_WHOLESALE_DATABASE_URL needs CARBITRAGE_WHOLESALE_GO_LIVE=1 and SUPABASE_JWT_SECRET");
+  if (process.env.CARBITRAGE_WHOLESALE_GO_LIVE !== "1" || !jwtVerifier) {
+    throw new Error("CARBITRAGE_WHOLESALE_DATABASE_URL needs CARBITRAGE_WHOLESALE_GO_LIVE=1 and CARBITRAGE_SUPABASE_JWKS_URL + CARBITRAGE_SUPABASE_ISSUER (or SUPABASE_JWT_SECRET)");
   }
   wholesale = createWholesale({ pool: new pg.Pool({ connectionString: process.env.CARBITRAGE_WHOLESALE_DATABASE_URL, max: 4, ssl: { rejectUnauthorized: false } }), market, now: () => new Date(), preview: false });
 }
@@ -83,10 +87,12 @@ const server = await startCarbitrageServer(
     sessionSecret: loadSecret(),
     demoMode: flags.demoMode,
     jwtSecret: flags.jwtSecret,
+    jwtVerifier,
     oauthIssuer: flags.oauthIssuer,
     oauthResourceUrl: flags.oauthResourceUrl,
     persistence: "postgres",
-    now: () => DEMO_NOW,
+    // Demo and preview use a fixed clock for their synthetic data. Anything real must use the real one (token expiry).
+    now: () => (flags.preview || flags.demoMode ? DEMO_NOW : new Date()),
     previewGate,
     wholesale,
     wholesaleUser,

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
+import { createHash, createPublicKey, createVerify, randomBytes, scryptSync, timingSafeEqual, createHmac, type JsonWebKey } from "node:crypto";
 import { ServiceError, type Snapshot, type Store, type UserAccount } from "./domain.ts";
 
 const SCRYPT_KEYLEN = 32;
@@ -148,4 +148,58 @@ export function readCookie(header: string | undefined, name: string): string | n
     if (k === name) return rest.join("=");
   }
   return null;
+}
+
+/**
+ * Verifies a Supabase user token against the project's PUBLIC signing keys (JWKS). The Ooglecars project signs with ES256,
+ * so no secret is needed or held here. Checks signature, expiry, issuer and audience.
+ */
+export interface JwtVerifier {
+  verify(token: string, now: Date): Promise<JwtClaims | null>;
+}
+
+interface Jwk extends JsonWebKey { kid?: string; alg?: string }
+
+export function createJwksVerifier(opts: { jwksUrl: string; issuer: string; audience?: string; fetchImpl?: typeof fetch }): JwtVerifier {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const audience = opts.audience ?? "authenticated";
+  let keys: Jwk[] = [];
+  let fetchedAt = 0;
+  async function load(force: boolean, now: number): Promise<void> {
+    // Refresh at most once a minute, and at least every 10 minutes.
+    if (!force && keys.length && now - fetchedAt < 10 * 60_000) return;
+    if (force && now - fetchedAt < 60_000) return;
+    const res = await doFetch(opts.jwksUrl, { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const body = (await res.json()) as { keys?: Jwk[] };
+    keys = (body.keys ?? []).filter((k) => k.kty === "EC" && k.crv === "P-256");
+    fetchedAt = now;
+  }
+  return {
+    async verify(token, now) {
+      const parts = token.split(".");
+      if (parts.length !== 3) return null;
+      const [h, p, sig] = parts as [string, string, string];
+      let header: { alg?: string; kid?: string };
+      try { header = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); } catch { return null; }
+      if (header.alg !== "ES256" || !header.kid) return null;
+      await load(false, now.getTime()).catch(() => undefined);
+      let key = keys.find((k) => k.kid === header.kid);
+      if (!key) { await load(true, now.getTime()).catch(() => undefined); key = keys.find((k) => k.kid === header.kid); }
+      if (!key) return null;
+      const verifier = createVerify("sha256");
+      verifier.update(`${h}.${p}`);
+      const ok = verifier.verify({ key: createPublicKey({ key: key as JsonWebKey, format: "jwk" }), dsaEncoding: "ieee-p1363" }, Buffer.from(sig, "base64url"));
+      if (!ok) return null;
+      try {
+        const claims = JSON.parse(Buffer.from(p, "base64url").toString("utf8")) as JwtClaims & { iss?: string; aud?: string | string[] };
+        if (!claims.sub) return null;
+        if (typeof claims.exp !== "number" || claims.exp * 1000 <= now.getTime()) return null;
+        if (claims.iss !== opts.issuer) return null;
+        const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+        if (!aud.includes(audience)) return null;
+        return claims;
+      } catch { return null; }
+    },
+  };
 }
