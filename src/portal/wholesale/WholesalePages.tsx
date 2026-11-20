@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, Navigate, NavLink, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { km } from "../format";
+import { portalApi } from "../api";
+import { signOutEverywhere } from "./auth";
+import { RoleRefusal, Wordmark } from "./WholesaleSignIn";
 import {
   useLoad,
   wholesaleApi,
@@ -15,6 +18,7 @@ import {
   type PriceOutcome,
   type RequestView,
   type DealerUpdate,
+  type BuyerAlert,
 } from "./api";
 
 /*
@@ -54,11 +58,27 @@ function useMode(): "preview" | "live" | null {
   return info.data?.mode ?? null;
 }
 
+/** True when this build runs the real test sign-in: the old step bar and "Preview as" picker are gone. */
+let testSignInCache: Promise<boolean> | null = null;
+function useTestSignIn(): boolean | null {
+  const [v, setV] = useState<boolean | null>(null);
+  useEffect(() => {
+    testSignInCache ??= portalApi.health().then((h) => Boolean(h.testSignIn)).catch(() => false);
+    void testSignInCache.then(setV);
+  }, []);
+  return v;
+}
+
+function TestEnvironmentLabel() {
+  return <span className="uppercase tracking-wide" data-testid="preview-label">Test environment · test data · nothing is sent</span>;
+}
+
 function Frame({ title, sub, children, testId, wide = false }: { title: string; sub?: string; children: ReactNode; testId: string; wide?: boolean }) {
   const mode = useMode();
+  const testSignIn = useTestSignIn();
   return (
     <div data-testid={testId} className={`mx-auto ${wide ? "max-w-5xl" : "max-w-2xl"}`}>
-      {mode === "live" ? <div className="mb-8" /> : <div className="mb-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-neutral-400">
+      {testSignIn === null || mode === "live" ? <div className="mb-8" /> : testSignIn ? <div className="mb-8 text-[11px] text-neutral-400"><TestEnvironmentLabel /></div> : <div className="mb-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-neutral-400">
         <PreviewLabel />
         <span aria-hidden="true">|</span>
         <nav aria-label="Preview steps" className="flex gap-3">
@@ -176,8 +196,18 @@ function carTitleOf(c: { year: number; make: string; model: string; badge: strin
   return `${c.year} ${c.make} ${c.model} ${c.badge}`;
 }
 
+function Refusal({ need }: { need: "dealer" | "buyer" }) {
+  const navigate = useNavigate();
+  const me = useLoad(() => wholesaleApi.me().catch(() => null), []);
+  if (me.loading) return null;
+  return <RoleRefusal need={need} who={me.data} onSignOut={() => { void signOutEverywhere().then(() => navigate("/portal/login")); }} />;
+}
+
 function LoadState<T>({ state, children }: { state: { data: T | null; error: WholesaleApiError | null; loading: boolean }; children: (data: T) => ReactNode }) {
-  if (state.error?.status === 401) return <Navigate to="/portal/login" replace />;
+  const location = useLocation();
+  if (state.error?.status === 401) return <Navigate to={`/portal/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
+  if (state.error?.code === "not_a_dealer") return <Refusal need="dealer" />;
+  if (state.error?.code === "not_a_buyer") return <Refusal need="buyer" />;
   if (state.error) return <p className="text-sm text-neutral-500" data-testid="load-error">{state.error.message}</p>;
   if (!state.data) return <p className="text-sm text-neutral-400">Loading…</p>;
   return <>{children(state.data)}</>;
@@ -729,21 +759,29 @@ function useBuyerId() {
 }
 
 function BuyerChrome({ children, as, buyers, onAs }: { children: ReactNode; as: string; buyers: Buyer[]; onAs: (id: string) => void }) {
+  const navigate = useNavigate();
   const q = as ? `?as=${as}` : "";
+  const testSignIn = useTestSignIn();
+  // Who is signed in comes from the server. A buyer sees their own name and nothing about any dealer.
+  const me = useLoad(() => wholesaleApi.me().catch(() => null), []);
+  const link = ({ isActive }: { isActive: boolean }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950");
   return (
     <div className="min-h-screen bg-white text-neutral-950">
       <header className="border-b border-neutral-200">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
-          <p className="text-sm font-semibold">Carbitrage · Buyer desk</p>
+          <div className="flex items-center gap-3"><Wordmark /><span className="text-sm text-neutral-400">Buyer desk</span></div>
           <nav aria-label="Buyer" className="flex items-center gap-5 text-sm">
-            <NavLink to={`/portal/buyer-view${q}`} className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")}>Cars</NavLink>
-            <NavLink to={`/portal/buyer-prices${q}`} className={({ isActive }) => (isActive ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-950")} data-testid="link-my-prices">My prices</NavLink>
+            <NavLink to={`/portal/buyer-view${q}`} className={link}>Cars</NavLink>
+            <NavLink to={`/portal/buyer-prices${q}`} className={link} data-testid="link-my-prices">My prices</NavLink>
+            {testSignIn ? <NavLink to="/portal/buyer-alerts" className={link} data-testid="link-alerts">Messages</NavLink> : null}
             {buyers.length === 0 ? null : <label className="flex items-center gap-1.5 text-xs text-neutral-400">
               Preview as
               <select value={as} onChange={(e) => onAs(e.target.value)} className="border border-neutral-200 bg-white px-1.5 py-1 text-xs text-neutral-700" data-testid="preview-as">
                 {buyers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </label>}
+            {me.data?.buyer ? <span className="text-xs text-neutral-400" data-testid="buyer-name">{me.data.buyer.name}</span> : null}
+            {buyers.length === 0 ? <button type="button" className="text-xs text-neutral-400 hover:text-neutral-950" data-testid="sign-out" onClick={() => { void signOutEverywhere().then(() => navigate("/portal/login")); }}>Sign out</button> : null}
           </nav>
         </div>
       </header>
@@ -752,11 +790,21 @@ function BuyerChrome({ children, as, buyers, onAs }: { children: ReactNode; as: 
   );
 }
 
+function BuyerGate({ error, children }: { error: WholesaleApiError | null; children: ReactNode }) {
+  const location = useLocation();
+  if (error?.status === 401) return <Navigate to={`/portal/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
+  if (error?.code === "not_a_buyer") return <div className="min-h-screen bg-white px-4 text-neutral-950"><Refusal need="buyer" /></div>;
+  return <>{children}</>;
+}
+
 export function WholesaleBuyerPage() {
   const b = useBuyerId();
+  const [params] = useSearchParams();
   const state = useLoad(() => (b.ready ? wholesaleApi.buyerCars(b.current) : Promise.resolve(null)), [b.current, b.ready]);
-  const [selected, setSelected] = useState<string | null>(null);
+  // A buyer alert links straight to its car: /portal/buyer-view?car=WT-XXXXXX
+  const [selected, setSelected] = useState<string | null>(params.get("car"));
   return (
+    <BuyerGate error={state.error}>
     <BuyerChrome as={b.current} buyers={b.buyers} onAs={b.set}>
       <Frame testId="wholesale-buyer" title="Cars to price" wide>
         <LoadState state={state}>
@@ -769,6 +817,7 @@ export function WholesaleBuyerPage() {
         </LoadState>
       </Frame>
     </BuyerChrome>
+    </BuyerGate>
   );
 }
 
@@ -926,6 +975,7 @@ export function BuyerPriceHistoryPage() {
   }), [state.data, from, to, outcome]);
   const field = "mt-1 block min-h-10 w-full border border-neutral-300 bg-white px-2 text-sm";
   return (
+    <BuyerGate error={state.error}>
     <BuyerChrome as={b.current} buyers={b.buyers} onAs={b.set}>
       <Frame testId="buyer-price-history" title="My prices" sub="Every price you've given, in Sydney time. Only you can see this." wide>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-[10rem_10rem_12rem]" data-testid="price-history-filters">
@@ -944,5 +994,40 @@ export function BuyerPriceHistoryPage() {
         {rows.length === 0 ? <p className="py-6 text-center text-sm text-neutral-400">No prices match.</p> : null}
       </Frame>
     </BuyerChrome>
+    </BuyerGate>
+  );
+}
+
+/* ---------- 9. Messages (test inbox) ---------- */
+
+/** Test environment only. Shows the alert exactly as the buyer's own bot would deliver it. Nothing is sent from here. */
+export function BuyerMessagesPage() {
+  const b = useBuyerId();
+  const state = useLoad(() => (b.ready ? wholesaleApi.buyerAlerts(b.current) : Promise.resolve(null)), [b.current, b.ready]);
+  return (
+    <BuyerGate error={state.error}>
+      <BuyerChrome as={b.current} buyers={b.buyers} onAs={b.set}>
+        <Frame testId="buyer-messages" title="Messages" sub="What your Carbitrage bot sends you, newest first. This is a test inbox: nothing here was sent to a phone." wide>
+          <LoadState state={state}>
+            {(d) => !d ? null : d.alerts.length === 0
+              ? <p className="text-sm text-neutral-400" data-testid="no-alerts">No messages yet.</p>
+              : <ul className="space-y-4" data-testid="alert-list">{d.alerts.map((a) => <AlertBubble key={a.id} alert={a} />)}</ul>}
+          </LoadState>
+        </Frame>
+      </BuyerChrome>
+    </BuyerGate>
+  );
+}
+
+function AlertBubble({ alert }: { alert: BuyerAlert }) {
+  // The text is shown exactly as sent. The trailing link is made clickable but the words are not changed.
+  const m = alert.text.match(/^(.*?)(https?:\/\/\S+)$/s);
+  return (
+    <li className="max-w-xl" data-testid="alert-message">
+      <p className="mb-1 text-[11px] text-neutral-400">Your Carbitrage bot · {sydney(alert.at)}</p>
+      <div className="rounded-2xl rounded-tl-sm bg-neutral-100 px-4 py-3 text-sm leading-relaxed text-neutral-900" data-testid="alert-text">
+        {m ? <>{m[1]}<a href={m[2]} className="break-all underline underline-offset-2" data-testid="alert-link">{m[2]}</a></> : alert.text}
+      </div>
+    </li>
   );
 }

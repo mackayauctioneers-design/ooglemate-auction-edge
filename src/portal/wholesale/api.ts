@@ -47,6 +47,7 @@ export interface BuyerCar {
   code: string; year: number; make: string; model: string; badge: string; km: number; state: string; sellerLabel: string; franchise: boolean;
   note: string | null; guide: Guide | null; myPriceCents: number | null; locked: boolean;
 }
+export interface BuyerAlert { id: string; at: string; code: string; text: string }
 export type PriceOutcome = "picked" | "not_picked" | "open" | "dealer_kept";
 export interface HistoryRow {
   ref: string; year: number; make: string; model: string; badge: string; km: number; state: string; sellerLabel: string; franchise: boolean;
@@ -100,6 +101,7 @@ export const wholesaleApi = {
   buyerCars: (as: string) => call<{ buyer: Buyer; cars: BuyerCar[] }>(`/buyer/cars${as ? `?as=${encodeURIComponent(as)}` : ""}`),
   buyerPrice: (as: string, code: string, amountDollars: number, note?: string) =>
     call<{ ok: true }>("/buyer/price", { method: "POST", body: { ...(as ? { as } : {}), code, amountDollars, note } }),
+  buyerAlerts: (as: string) => call<{ alerts: BuyerAlert[] }>(`/buyer/alerts${as ? `?as=${encodeURIComponent(as)}` : ""}`),
   buyerHistory: (as: string) => call<{ rows: HistoryRow[] }>(`/buyer/history${as ? `?as=${encodeURIComponent(as)}` : ""}`),
 };
 

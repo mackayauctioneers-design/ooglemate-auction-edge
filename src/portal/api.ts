@@ -35,7 +35,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const portalApi = {
-  health: () => request<{ ok: boolean; demoMode: boolean; supabaseSignIn?: boolean; billingEnabled: false }>("/api/carbitrage/health"),
+  health: () => request<{ ok: boolean; demoMode: boolean; supabaseSignIn?: boolean; testSignIn?: boolean; billingEnabled: false }>("/api/carbitrage/health"),
   me: () => request<Me>("/api/carbitrage/me"),
   login: (email: string, password: string) =>
     request<{ ok: true; displayName: string }>("/api/carbitrage/session", {

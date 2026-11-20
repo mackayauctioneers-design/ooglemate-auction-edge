@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import carbitrageLogo from "@/assets/carbitrage-logo.jpg";
-import carbitrageMarkLight from "@/assets/carbitrage-mark-light.png";
 import { ApiError, portalApi } from "./api";
 import type { Me } from "./types";
 import { PortalError, PortalLoading } from "./states";
-import { wholesaleApi } from "./wholesale/api";
+import { wholesaleApi, type Me as WholesaleMe } from "./wholesale/api";
+import { signOutEverywhere } from "./wholesale/auth";
+import { RoleRefusal, Wordmark } from "./wholesale/WholesaleSignIn";
+
+/** The franchise dealer's own screens. A franchise dealer has no Finds, DNA or yard data, so nothing else is offered. */
+const WHOLESALE_LINKS = [
+  { to: "/portal/wholesale/start", label: "New car" },
+  { to: "/portal/wholesale/updates", label: "Updates" },
+];
 
 const LINKS = [
   { to: "/portal/finds", label: "Finds" },
@@ -23,9 +30,25 @@ export default function Shell() {
   const quiet = location.pathname.startsWith("/portal/wholesale");
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [testDealer, setTestDealer] = useState<string | null>(null);
+  const [who, setWho] = useState<WholesaleMe | null>(null);
+
+  // Wholesale screens: who you are comes from the server's own check of your sign-in (dealer feature, or approved buyer link).
+  useEffect(() => {
+    if (!quiet) return;
+    let active = true;
+    wholesaleApi.me().then((next) => { if (active) setWho(next); }).catch((err: unknown) => {
+      if (!active) return;
+      if ((err as { status?: number })?.status === 401) {
+        navigate(`/portal/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`, { replace: true });
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Could not load the account");
+    });
+    return () => { active = false; };
+  }, [quiet, navigate]);
 
   useEffect(() => {
+    if (quiet) return;
     let active = true;
     portalApi.me().then((next) => {
       if (!active) return;
@@ -42,16 +65,10 @@ export default function Shell() {
     return () => {
       active = false;
     };
-  }, [navigate]);
-
-  useEffect(() => {
-    if (!quiet) return;
-    // On the wholesale screens the header names the labelled preview dealer, never a real dealership.
-    wholesaleApi.info().then((i) => setTestDealer(i.dealer.name)).catch(() => undefined);
-  }, [quiet]);
+  }, [quiet, navigate]);
 
   async function signOut() {
-    await portalApi.logout().catch(() => undefined);
+    await signOutEverywhere();
     navigate("/portal/login");
   }
 
@@ -62,10 +79,10 @@ export default function Shell() {
       </div>
     );
   }
-  if (!me) return <div className="mx-auto max-w-3xl p-6"><PortalLoading label="Checking your account…" /></div>;
-
   if (quiet) {
-    const yardName = me.yards.map((yard) => yard.name).join(" · ");
+    if (!who) return <div className="mx-auto max-w-3xl p-6"><PortalLoading label="Checking your account…" /></div>;
+    // Only franchise dealers get the dealer screens. A buyer, an ordinary yard's staff, or an account with no role is refused here.
+    if (!who.dealer) return <div className="min-h-screen bg-white px-4 text-neutral-950"><RoleRefusal need="dealer" who={who} onSignOut={signOut} /></div>;
     return (
       <div className="min-h-screen bg-white text-neutral-950">
         <a href="#portal-main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:bg-white focus:px-3 focus:py-2">
@@ -73,19 +90,16 @@ export default function Shell() {
         </a>
         <header className="border-b border-neutral-200" data-testid="quiet-header">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <img src={carbitrageMarkLight} alt="" className="h-6 w-auto object-contain" />
-              <span className="text-sm font-semibold tracking-tight" data-testid="logo-text">Carbitrage</span>
-            </div>
+            <div className="flex min-w-0 items-center"><Wordmark /></div>
             <div className="flex min-w-0 items-center gap-4">
-              <span className="truncate text-xs text-neutral-400" data-testid="dealer-name">{testDealer ?? yardName}</span>
-              <button type="button" onClick={signOut} className="shrink-0 text-xs text-neutral-400 hover:text-neutral-950">
+              <span className="truncate text-xs text-neutral-400" data-testid="dealer-name">{who.dealer.name}</span>
+              <button type="button" onClick={signOut} className="shrink-0 text-xs text-neutral-400 hover:text-neutral-950" data-testid="sign-out">
                 Sign out
               </button>
             </div>
           </div>
           <nav aria-label="Portal" className="mx-auto flex max-w-5xl gap-5 overflow-x-auto whitespace-nowrap px-4 pb-2.5 text-sm [scrollbar-width:none]">
-            {LINKS.map((link) => (
+            {WHOLESALE_LINKS.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -97,11 +111,12 @@ export default function Shell() {
           </nav>
         </header>
         <main id="portal-main" className="mx-auto max-w-6xl px-4 py-8">
-          <Outlet context={me} />
+          <Outlet context={null} />
         </main>
       </div>
     );
   }
+  if (!me) return <div className="mx-auto max-w-3xl p-6"><PortalLoading label="Checking your account…" /></div>;
 
   return (
     <div className="min-h-screen bg-white text-neutral-950">

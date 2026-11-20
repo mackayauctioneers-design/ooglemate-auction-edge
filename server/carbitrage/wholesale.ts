@@ -18,6 +18,10 @@ export interface WholesaleOptions {
   now: () => Date;
   /** Private preview: test cars, the held list, and the `as` buyer picker. Never true in production. */
   preview: boolean;
+  /** Private preview only: the "Preview as" buyer picker. Off when the preview runs the real sign-in. */
+  picker?: boolean;
+  /** Private preview only: the address the test alert links to (the preview's own address). */
+  alertBaseUrl?: string;
 }
 
 export interface WholesaleResponse { status: number; body: unknown }
@@ -69,6 +73,7 @@ interface CarInput { rego: string | null; year: number; make: string; model: str
 
 export function createWholesale(opts: WholesaleOptions) {
   const { pool, preview } = opts;
+  const picker = preview && Boolean(opts.picker);
 
   async function rpc<T>(sql: string, args: unknown[]): Promise<T> {
     try {
@@ -126,6 +131,36 @@ export function createWholesale(opts: WholesaleOptions) {
       "select id, contact_name from wholesale_buyers where approved and active and status = 'approved' and not is_placeholder order by created_at, contact_name",
     );
     return r.rows.map((b) => ({ id: b.id, name: b.contact_name }));
+  }
+
+  /**
+   * PRIVATE PREVIEW ONLY. Stand-in for the Ooglecars alert worker. It reads the same queue the database fills (wholesale_buyer_alerts,
+   * which stays empty while the franchise_buyer_alerts switch is OFF), builds the franchise wording with the pending 0004 function, and
+   * records each message in the existing notification log shape. It is shown in the test inbox only. Nothing is sent to anyone.
+   */
+  async function deliverPreviewAlerts(code: string): Promise<number> {
+    const queued = await pool.query<{ buyer_id: string; tender_id: string; dealership_id: string }>(
+      `select a.buyer_id, a.tender_id, t.dealership_id from wholesale_buyer_alerts a join wholesale_tenders t on t.id = a.tender_id
+        where t.public_code = $1 and t.franchise_car and a.phase = 'tender'
+          and not exists (select 1 from wholesale_notification_log l where l.kind = 'buyer_bot_alert' and l.buyer_id = a.buyer_id and l.tender_id = a.tender_id)`, [code]);
+    let n = 0;
+    for (const q of queued.rows) {
+      const m = await pool.query<{ r: { text: string } | null }>("select public.carbitrage_wholesale_alert_message_v1($1, $2, $3) as r", [q.buyer_id, q.tender_id, opts.alertBaseUrl ?? "https://carbitrage.com.au"]);
+      if (!m.rows[0]?.r) continue;
+      await pool.query("insert into wholesale_notification_log (channel, kind, body, tender_id, buyer_id, dealership_id) values ('log', 'buyer_bot_alert', $1, $2, $3, $4)",
+        [`${m.rows[0].r.text} \u2014 test inbox only, nothing sent`, q.tender_id, q.buyer_id, q.dealership_id]);
+      n++;
+    }
+    return n;
+  }
+
+  async function previewInbox(user: string) {
+    const who = await rpc<{ buyer: { id: string } | null }>("select public.carbitrage_wholesale_whoami_v1($1) as r", [user]);
+    if (!who.buyer) bad(403, "not_a_buyer", "This sign-in is not an approved buyer");
+    const r = await pool.query<{ id: string; body: string; created_at: Date; public_code: string }>(
+      `select l.id, l.body, l.created_at, t.public_code from wholesale_notification_log l join wholesale_tenders t on t.id = l.tender_id
+        where l.kind = 'buyer_bot_alert' and l.buyer_id = $1 order by l.created_at desc limit 20`, [who.buyer.id]);
+    return r.rows.map((x) => ({ id: x.id, at: x.created_at.toISOString(), code: x.public_code, text: x.body.split(" \u2014 ")[0] }));
   }
 
   async function dealerRoute(user: string, method: string, path: string, body: Record<string, unknown>): Promise<WholesaleResponse | null> {
@@ -195,7 +230,9 @@ export function createWholesale(opts: WholesaleOptions) {
         "select public.carbitrage_wholesale_send_v1($1, $2::jsonb, $3, $4::uuid[], $5::jsonb) as r",
         [user, JSON.stringify({ rego: c.rego, year: c.year, make: c.make, model: c.model, badge: c.badge, km: c.km, colour: c.colour, state: c.state }), note || null, targets, JSON.stringify(v.guide)],
       );
-      return { status: 201, body: { code: out.code, sentTo: out.sentTo } };
+      // Preview: the stand-in worker turns whatever the database queued into test-inbox messages (none while the switch is OFF).
+      const alertsDelivered = preview ? await deliverPreviewAlerts(out.code) : 0;
+      return { status: 201, body: { code: out.code, sentTo: out.sentTo, alertsQueued: out.alertsQueued, ...(preview ? { testInboxAlerts: alertsDelivered } : {}) } };
     }
 
     if (method === "GET" && path === "/requests") {
@@ -249,7 +286,7 @@ export function createWholesale(opts: WholesaleOptions) {
   }
 
   async function buyerUser(signedIn: string | null, query: URLSearchParams, body: Record<string, unknown>): Promise<string> {
-    if (preview) {
+    if (picker) {
       // Preview-only picker so one person can try all four buyers. Production never reads `as`.
       const asId = query.get("as") ?? (typeof body.as === "string" ? body.as : null);
       if (asId) {
@@ -264,7 +301,7 @@ export function createWholesale(opts: WholesaleOptions) {
 
   async function buyerRoute(signedIn: string | null, method: string, path: string, query: URLSearchParams, body: Record<string, unknown>): Promise<WholesaleResponse | null> {
     if (method === "GET" && path === "/buyer/list") {
-      if (!preview) bad(404, "not_found", "No such wholesale route");
+      if (!picker) bad(404, "not_found", "No such wholesale route");
       return { status: 200, body: { buyers: await previewBuyers() } };
     }
     const user = await buyerUser(signedIn, query, body);
@@ -275,6 +312,10 @@ export function createWholesale(opts: WholesaleOptions) {
       const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 300) : null;
       await rpc("select public.carbitrage_wholesale_buyer_price_v1($1, $2, $3, $4) as r", [user, code, dollars, note]);
       return { status: 201, body: { ok: true } };
+    }
+    if (method === "GET" && path === "/buyer/alerts") {
+      if (!preview) bad(404, "not_found", "No such wholesale route");
+      return { status: 200, body: { alerts: await previewInbox(user) } };
     }
     if (method === "GET" && path === "/buyer/history") return { status: 200, body: await rpc("select public.carbitrage_wholesale_buyer_history_v1($1) as r", [user]) };
     return null;

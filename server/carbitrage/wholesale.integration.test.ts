@@ -35,7 +35,7 @@ before(async () => {
   const u = new URL(base); u.pathname = `/${dbName}`; url = u.toString();
   await applyWholesaleMirror(url);
   pool = new pg.Pool({ connectionString: url, max: 3 });
-  ws = createWholesale({ pool, market: null, now: () => new Date("2026-11-20T12:00:00Z"), preview: true });
+  ws = createWholesale({ pool, market: null, now: () => new Date("2026-11-20T12:00:00Z"), preview: true, picker: true });
   ok = true;
   void adminUrl;
 });
@@ -111,13 +111,17 @@ test("alerts ON: targeted buyers only, stable due row, then OFF again", { skip: 
   assert.deepEqual([...t2.target_buyer_ids].sort(), [BUYER_ID(1), BUYER_ID(3)]);
   const alerts = await q("select buyer_id from wholesale_buyer_alerts where tender_id = $1 order by 1", [t2.id]);
   assert.deepEqual(alerts.rows.map((r) => r.buyer_id), [BUYER_ID(1), BUYER_ID(3)]);
-  const due = (await q("select id, kind, body from wholesale_notification_log where tender_id = $1", [t2.id])).rows;
+  const due = (await q("select id, kind, body from wholesale_notification_log where tender_id = $1 and kind = 'buyer_alerts_due'", [t2.id])).rows;
   assert.equal(due.length, 1);
   assert.equal(due[0].kind, "buyer_alerts_due");
   assert.equal(due[0].body, "pending");
   // same id the Ooglecars app computes
   const hex = createHash("sha256").update(`wholesale-alerts-due:${t2.dealership_id}:tender:${t2.id}`).digest("hex");
   assert.equal(due[0].id, `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`);
+  // the preview's stand-in alert worker wrote one test-inbox message per picked buyer, and no one else
+  const bots = (await q("select buyer_id, body from wholesale_notification_log where tender_id = $1 and kind = 'buyer_bot_alert' order by buyer_id", [t2.id])).rows;
+  assert.deepEqual(bots.map((r) => r.buyer_id), [BUYER_ID(1), BUYER_ID(3)]);
+  for (const b of bots) assert.ok(!/preview test dealer|dealer\.example|patrick/i.test(b.body), "alert named the dealer");
   await q("update carbitrage_switches set enabled = false where key = 'franchise_buyer_alerts'");
   (globalThis as { __code?: string }).__code = code;
 });
@@ -175,6 +179,8 @@ test("preview picker is refused outside preview", { skip: !base }, async (t) => 
 test("undo files put everything back (and refuse while franchise requests exist)", { skip: !base }, async (t) => {
   if (!ok) return t.skip();
   const sql = (n: string) => readFileSync(new URL(`../../supabase/pending/${n}`, import.meta.url), "utf8");
+  await q(sql("carbitrage-wholesale-0004-franchise-alert-message.undo.sql"));
+  assert.equal((await q("select count(*)::int n from pg_proc where proname = 'carbitrage_wholesale_alert_message_v1'")).rows[0].n, 0);
   await q(sql("carbitrage-wholesale-0003-franchise-feature.undo.sql"));
   assert.match((await q("select pg_get_functiondef('public.carbitrage_wholesale_dealership_v1(uuid)'::regprocedure) d")).rows[0].d, /wholesale_pricing/);
   await q(sql("carbitrage-wholesale-0002-rpc-v1.undo.sql"));
@@ -194,5 +200,6 @@ test("undo files put everything back (and refuse while franchise requests exist)
   await q(sql("carbitrage-wholesale-0001-franchise-columns.sql"));
   await q(sql("carbitrage-wholesale-0002-rpc-v1.sql"));
   await q(sql("carbitrage-wholesale-0003-franchise-feature.sql"));
+  await q(sql("carbitrage-wholesale-0004-franchise-alert-message.sql"));
   assert.equal((await q("select enabled from carbitrage_switches")).rows[0].enabled, false);
 });

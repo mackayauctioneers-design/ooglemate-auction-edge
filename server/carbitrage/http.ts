@@ -9,6 +9,7 @@ import { createServices, type IngestBody } from "./services.ts";
 import { previewGateAllows, previewGateCookie, previewGatePage, previewPasswordMatches } from "./preview-guard.ts";
 import type { DataPort } from "./store.ts";
 import type { Wholesale } from "./wholesale.ts";
+import type { TestAuth } from "./test-auth.ts";
 
 export interface AuthDirectory {
   demoPassword(email: string): Promise<{ userId: string; passwordHash: string; passwordSalt: string; displayName: string } | null>;
@@ -34,6 +35,12 @@ export interface ServerOptions {
   wholesale?: Wholesale | null;
   /** Preview only: maps a preview persona's id to the fixed preview dealer or buyer user. Unset in production. */
   wholesaleUser?: ((userId: string) => Promise<string>) | null;
+  /** Private preview only: stand-in Supabase sign-in server for test accounts (see test-auth.ts). */
+  testAuth?: TestAuth | null;
+  /** Clock for checking sign-in tokens. Real time, even in the preview whose data clock is fixed. Defaults to now(). */
+  authNow?: (() => Date) | null;
+  /** Private preview only: the old "Preview as" buyer picker and sign-in-free buyer screens. Off once real sign-in is on. */
+  wholesalePicker?: boolean;
 }
 
 export function memoryDirectory(store: Store): AuthDirectory {
@@ -84,6 +91,8 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
       return;
     }
 
+    if (opts.testAuth && path.startsWith("/auth/v1/") && (await opts.testAuth.handle(req, res, url))) return;
+
     // Deploy-time patch (preview only): the gate has already passed, so serve the built site before the sign-in check.
     if (req.method === "GET" && opts.staticRoot && !path.startsWith("/api/") && path !== "/mcp" && !path.startsWith("/.well-known/") && serveStatic(opts.staticRoot, path, res)) return;
 
@@ -93,6 +102,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         product: "carbitrage",
         demoMode: opts.demoMode,
         supabaseSignIn: Boolean(opts.jwtSecret || opts.jwtVerifier),
+        testSignIn: Boolean(opts.testAuth),
         billingEnabled: false,
         persistence: opts.persistence,
         hostedOauth: Boolean(opts.oauthIssuer && opts.oauthResourceUrl),
@@ -128,7 +138,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         res.setHeader("Set-Cookie", sessionCookie(signSession(claims.sub, opts.sessionSecret, opts.now())));
         return send(res, 200, { ok: true, auth: "supabase_jwt" });
       }
-      if (!opts.demoMode) throw new ServiceError(404, "demo_disabled", "Password sign-in is disabled outside the local demo");
+      if (!opts.demoMode || opts.testAuth) throw new ServiceError(404, "demo_disabled", "Password sign-in is disabled outside the local demo");
       const email = stringField(body, "email");
       const password = stringField(body, "password");
       const user = await opts.directory.demoPassword(email);
@@ -140,7 +150,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/session/demo") {
-      if (!opts.demoMode) throw new ServiceError(404, "demo_disabled", "Demo sign-in is disabled");
+      if (!opts.demoMode || opts.testAuth) throw new ServiceError(404, "demo_disabled", "Demo sign-in is disabled");
       const body = await readJson(req);
       const persona = stringField(body, "persona");
       if (!(PERSONAS as readonly string[]).includes(persona)) {
@@ -189,7 +199,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         signedIn = opts.wholesaleUser ? await opts.wholesaleUser(principal.userId) : principal.userId;
       } catch (err) {
         // A buyer in the private preview may arrive with no sign-in at all and use the preview picker.
-        if (!(isBuyer && opts.previewGate)) throw err;
+        if (!(isBuyer && opts.previewGate && opts.wholesalePicker)) throw err;
       }
       const body = req.method === "POST" ? await readJson(req).catch(() => ({} as Record<string, unknown>)) : {};
       const out = await opts.wholesale.handle(isBuyer ? "buyer" : "dealer", signedIn, req.method ?? "GET", sub, url.searchParams, body);
@@ -277,8 +287,9 @@ async function userPrincipal(opts: ServerOptions, req: IncomingMessage): Promise
 }
 
 async function verifyAccessToken(opts: ServerOptions, token: string): Promise<JwtClaims | null | "not_configured"> {
-  if (opts.jwtVerifier) return opts.jwtVerifier.verify(token, opts.now());
-  if (opts.jwtSecret) return verifySupabaseJwt(token, opts.jwtSecret, opts.now());
+  const at = opts.authNow ? opts.authNow() : opts.now();
+  if (opts.jwtVerifier) return opts.jwtVerifier.verify(token, at);
+  if (opts.jwtSecret) return verifySupabaseJwt(token, opts.jwtSecret, at);
   return "not_configured";
 }
 

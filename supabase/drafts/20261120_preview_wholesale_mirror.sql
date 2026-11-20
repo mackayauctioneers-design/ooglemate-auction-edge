@@ -243,3 +243,28 @@ insert into preview_wholesale_test_cars (rego, state, year, make, model, badge, 
   ('TEST02', 'NSW', 2021, 'Toyota', 'RAV4', 'GX Hybrid 2WD', 'Wagon', 'Glacier White', 'CVT auto', 'JTM•••••••••0002', 58400, 'Service books, two keys, small chip in windscreen.', 'rav4-sample'),
   ('TEST03', 'NSW', 2016, 'Holden', 'Captiva', 'LTZ AWD', 'Wagon', 'Silver', 'Auto', 'KL1•••••••••0003', 141200, 'One owner.', 'captiva-held')
 on conflict (rego) do nothing;
+
+-- Test sign-in accounts for the private preview's stand-in sign-in server (server/carbitrage/test-auth.ts). Not Supabase users.
+-- Passwords are written at start-up from a private file on the preview host; no password is stored in this repository.
+create table if not exists preview_test_accounts (
+  user_id uuid primary key,
+  email text not null unique,
+  label text not null,
+  password_salt text,
+  password_hash text
+);
+-- A second dealership that does NOT have the franchise feature (stands in for an ordinary Ooglecars yard's staff): must be refused.
+insert into dealerships (id, name, slug, address, phone, email) values
+  ('00000000-0000-4000-8000-00000000fa02', 'Preview ordinary yard (not a real dealership)', 'preview-ordinary-yard', '2 Example St, Example NSW 2000', '0400 000 099', 'yard@yard.example.invalid')
+on conflict (id) do nothing;
+insert into dealership_features (dealership_id, feature_key, enabled) values ('00000000-0000-4000-8000-00000000fa02', 'wholesale_pricing', true);
+insert into dealership_members (dealership_id, user_id, role) values ('00000000-0000-4000-8000-00000000fa02', '00000000-0000-4000-8000-0000000c0002', 'owner') on conflict do nothing;
+insert into preview_test_accounts (user_id, email, label) values
+  ('00000000-0000-4000-8000-0000000d0001', 'patrick@test.carbitrage.invalid', 'Patrick Auto (test franchise dealer)'),
+  ('00000000-0000-4000-8000-0000000b0a01', 'macka@buyer.example.invalid', 'Buyer Macka (test)'),
+  ('00000000-0000-4000-8000-0000000b0a02', 'alex@buyer.example.invalid', 'Buyer Alex (test)'),
+  ('00000000-0000-4000-8000-0000000b0a03', 'griefy@buyer.example.invalid', 'Buyer Griefy (test)'),
+  ('00000000-0000-4000-8000-0000000b0a04', 'cam@buyer.example.invalid', 'Buyer Cam (test)'),
+  ('00000000-0000-4000-8000-0000000c0001', 'nobody@test.carbitrage.invalid', 'Account with no wholesale role (test)'),
+  ('00000000-0000-4000-8000-0000000c0002', 'yard@test.carbitrage.invalid', 'Ordinary yard staff, no franchise feature (test)')
+on conflict (user_id) do nothing;

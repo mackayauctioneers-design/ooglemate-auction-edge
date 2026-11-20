@@ -133,6 +133,8 @@ export function BobSiteContextProvider({ children }: { children: React.ReactNode
   // Fetch dealer profile on mount/user change
   const refreshDealerProfile = useCallback(async () => {
     if (!user?.id) return;
+    // Carbitrage portal (franchise dealers, wholesale buyers): no Ooglecars dealer profile to look up.
+    if (window.location.pathname.startsWith('/portal')) return;
     
     setIsLoading(true);
     try {

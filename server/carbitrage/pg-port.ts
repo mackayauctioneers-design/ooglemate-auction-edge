@@ -34,7 +34,7 @@ export async function applyCanonicalSchema(connectionString: string): Promise<vo
 }
 
 /** Preview only. Creates the local mirror of the wholesale tables and labelled test rows in the disposable database. */
-const MIRROR_VERSION = "20261120-d";
+const MIRROR_VERSION = "20261120-e";
 
 /**
  * Preview only. Builds the production-shaped wholesale tables in the disposable local database, then runs the two pending
@@ -54,7 +54,7 @@ export async function applyWholesaleMirror(connectionString: string): Promise<vo
     await client.query(`
       drop table if exists wholesale_bid_events, wholesale_bids, wholesale_tenders, wholesale_buyers, wholesale_buyer_alerts,
         wholesale_notification_log, dealership_features, dealership_members, dealerships, preview_wholesale_held,
-        preview_wholesale_test_cars, preview_wholesale_dealers, carbitrage_switches, preview_mirror_version cascade;
+        preview_wholesale_test_cars, preview_wholesale_dealers, preview_test_accounts, carbitrage_switches, preview_mirror_version cascade;
       do $$ declare f text; begin
         for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                   where n.nspname = 'public' and p.proname like 'carbitrage_wholesale_%' loop execute 'drop function ' || f || ' cascade'; end loop;
@@ -64,6 +64,7 @@ export async function applyWholesaleMirror(connectionString: string): Promise<vo
     await client.query(read("../../supabase/pending/carbitrage-wholesale-0001-franchise-columns.sql"));
     await client.query(read("../../supabase/pending/carbitrage-wholesale-0002-rpc-v1.sql"));
     await client.query(read("../../supabase/pending/carbitrage-wholesale-0003-franchise-feature.sql"));
+    await client.query(read("../../supabase/pending/carbitrage-wholesale-0004-franchise-alert-message.sql"));
     await client.query("create table preview_mirror_version (version text not null)");
     await client.query("insert into preview_mirror_version values ($1)", [MIRROR_VERSION]);
   } finally {

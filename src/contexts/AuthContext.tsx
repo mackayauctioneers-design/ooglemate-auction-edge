@@ -47,6 +47,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * The Carbitrage portal (/portal/*, franchise dealers and wholesale buyers) shares this app's sign-in but is not the Ooglecars
+ * dealer app. On those screens signing in must not write an Ooglecars login row, call the login notifier, or look up an
+ * Ooglecars dealer profile: franchise people have none, and the notifier would message the Ooglecars team about each one.
+ */
+const onCarbitragePortal = () => typeof window !== 'undefined' && window.location.pathname.startsWith('/portal');
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -107,7 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         
-        if (newSession?.user) {
+        if (newSession?.user && onCarbitragePortal()) {
+          // Carbitrage portal: no Ooglecars lookups, login rows or notifications (see onCarbitragePortal).
+        } else if (newSession?.user) {
           // Defer data fetching to avoid blocking
           setTimeout(() => loadUserData(newSession.user), 0);
 
@@ -140,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       
-      if (initialSession?.user) {
+      if (initialSession?.user && !onCarbitragePortal()) {
         loadUserData(initialSession.user);
       }
       setIsLoading(false);

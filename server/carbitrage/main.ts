@@ -9,6 +9,7 @@ import { startCarbitrageServer, type AuthDirectory } from "./http.ts";
 import { applyCanonicalSchema, applyWholesaleMirror, assertDisposableDatabaseUrl, createPgPort, lookupApiKeyUser, lookupDemoPassword, lookupIngestPrincipal, seedCanonicalDatabase } from "./pg-port.ts";
 import { MemoryStore } from "./store.ts";
 import { createWholesale } from "./wholesale.ts";
+import { createTestAuth, seedTestAccountPasswords, TEST_AUTH_ISSUER } from "./test-auth.ts";
 
 const flags = resolveRuntimeFlags(process.env);
 const databaseUrl = process.env.CARBITRAGE_DATABASE_URL?.trim() || readLocal("database-url");
@@ -50,10 +51,27 @@ const jwtIssuer = process.env.CARBITRAGE_SUPABASE_ISSUER?.trim();
 const jwtVerifier = !flags.preview && jwksUrl && jwtIssuer ? createJwksVerifier({ jwksUrl, issuer: jwtIssuer }) : null;
 let wholesale: ReturnType<typeof createWholesale> | null = null;
 let wholesaleUser: ((userId: string) => Promise<string>) | null = null;
+let testAuth: ReturnType<typeof createTestAuth> | null = null;
+let previewJwtVerifier: ReturnType<typeof createJwksVerifier> | null = null;
 if (flags.preview) {
-  wholesale = createWholesale({ pool: new pg.Pool({ connectionString: migrateUrl, max: 4 }), market, now: () => new Date(), preview: true });
-  // Preview sign-in: only the Patrick Auto persona is the preview dealer. Any other persona is a different, non-member user.
+  const previewPool = new pg.Pool({ connectionString: migrateUrl, max: 4 });
+  const realSignIn = process.env.CARBITRAGE_PREVIEW_TEST_AUTH === "1";
+  if (realSignIn) {
+    // Real sign-in path on test accounts only: a stand-in for the Supabase sign-in server (ES256 tokens), checked by the same verifier
+    // the production server uses. The "Preview as" picker is off. The password comes from a private file and is never printed.
+    const pwFile = process.env.CARBITRAGE_PREVIEW_TEST_PASSWORD_FILE?.trim();
+    if (!pwFile) throw new Error("CARBITRAGE_PREVIEW_TEST_AUTH=1 needs CARBITRAGE_PREVIEW_TEST_PASSWORD_FILE");
+    const testPassword = readFileSync(pwFile, "utf8").trim();
+    if (testPassword.length < 12) throw new Error("The test account password file is too short");
+    testAuth = createTestAuth({ pool: previewPool, preview: true });
+    const seeded = await seedTestAccountPasswords(previewPool, testPassword);
+    previewJwtVerifier = createJwksVerifier({ jwksUrl: "http://test-auth.invalid/auth/v1/.well-known/jwks.json", issuer: TEST_AUTH_ISSUER, fetchImpl: testAuth.fetchJwks });
+    console.log(`Test sign-in on for ${seeded} test accounts (stand-in sign-in server, test data only)`);
+  }
+  wholesale = createWholesale({ pool: previewPool, market, now: () => new Date(), preview: true, picker: !realSignIn, alertBaseUrl: process.env.CARBITRAGE_PREVIEW_PUBLIC_URL?.trim() || undefined });
+  // Persona sign-in (old preview): only the Patrick Auto persona is the preview dealer. With the real test sign-in on, the verified user id is used as is.
   wholesaleUser = async (userId) => {
+    if (realSignIn) return userId;
     const snap = await port.read({ kind: "user", userId });
     const email = snap.users.find((u) => u.id === userId)?.email?.toLowerCase();
     return email === "patrick@demo.carbitrage.test" ? PREVIEW_DEALER_USER : userId;
@@ -87,7 +105,10 @@ const server = await startCarbitrageServer(
     sessionSecret: loadSecret(),
     demoMode: flags.demoMode,
     jwtSecret: flags.jwtSecret,
-    jwtVerifier,
+    jwtVerifier: previewJwtVerifier ?? jwtVerifier,
+    authNow: () => new Date(),
+    testAuth,
+    wholesalePicker: flags.preview && !testAuth,
     oauthIssuer: flags.oauthIssuer,
     oauthResourceUrl: flags.oauthResourceUrl,
     persistence: "postgres",
