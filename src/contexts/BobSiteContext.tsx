@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
+import { isCarbitragePortalPath } from './signInPolicy';
 
 // ============================================================================
 // BOB SITE CONTEXT - Makes Bob "site-aware" with Live Eyes + Dealer Brain
@@ -134,7 +135,7 @@ export function BobSiteContextProvider({ children }: { children: React.ReactNode
   const refreshDealerProfile = useCallback(async () => {
     if (!user?.id) return;
     // Carbitrage portal (franchise dealers, wholesale buyers): no Ooglecars dealer profile to look up.
-    if (window.location.pathname.startsWith('/portal')) return;
+    if (isCarbitragePortalPath(window.location.pathname)) return;
     
     setIsLoading(true);
     try {

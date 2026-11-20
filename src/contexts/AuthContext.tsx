@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { signInActions } from './signInPolicy';
 
 // ============================================================================
 // AUTH CONTEXT: SUPABASE-BACKED AUTHENTICATION
@@ -47,12 +48,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/**
- * The Carbitrage portal (/portal/*, franchise dealers and wholesale buyers) shares this app's sign-in but is not the Ooglecars
- * dealer app. On those screens signing in must not write an Ooglecars login row, call the login notifier, or look up an
- * Ooglecars dealer profile: franchise people have none, and the notifier would message the Ooglecars team about each one.
- */
-const onCarbitragePortal = () => typeof window !== 'undefined' && window.location.pathname.startsWith('/portal');
+const currentPath = () => (typeof window !== 'undefined' ? window.location.pathname : undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -114,14 +110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         
-        if (newSession?.user && onCarbitragePortal()) {
-          // Carbitrage portal: no Ooglecars lookups, login rows or notifications (see onCarbitragePortal).
-        } else if (newSession?.user) {
-          // Defer data fetching to avoid blocking
-          setTimeout(() => loadUserData(newSession.user), 0);
+        if (newSession?.user) {
+          // Carbitrage portal sign-ins (/portal/*) skip the Ooglecars role/profile lookup but are still logged and notified.
+          const actions = signInActions(currentPath(), event);
+          if (actions.loadOoglecarsProfile) {
+            // Defer data fetching to avoid blocking
+            setTimeout(() => loadUserData(newSession.user), 0);
+          }
 
           // Log login events (SIGNED_IN covers password, magic link, OAuth)
-          if (event === 'SIGNED_IN') {
+          if (actions.recordLogin) {
             const loginEmail = newSession.user.email ?? null;
             supabase.from('login_events').insert({
               user_id: newSession.user.id,
@@ -130,10 +128,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }).then(({ error }) => {
               if (error) console.warn('Failed to log login event:', error.message);
             });
+          }
 
-            // Notify via Lindy (fire-and-forget)
+          // Notify via Lindy (fire-and-forget)
+          if (actions.notifyLogin) {
             supabase.functions.invoke('notify-login', {
-              body: { email: loginEmail, logged_in_at: new Date().toISOString() },
+              body: { email: newSession.user.email ?? null, logged_in_at: new Date().toISOString() },
             }).catch(() => {});
           }
         } else {
@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       
-      if (initialSession?.user && !onCarbitragePortal()) {
+      if (initialSession?.user && signInActions(currentPath(), 'INITIAL_SESSION').loadOoglecarsProfile) {
         loadUserData(initialSession.user);
       }
       setIsLoading(false);
