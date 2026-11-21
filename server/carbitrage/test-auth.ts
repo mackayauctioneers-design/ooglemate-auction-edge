@@ -15,8 +15,13 @@ import pg from "pg";
 export const TEST_AUTH_ISSUER = "https://carbitrage-test-auth.invalid/auth/v1";
 const ACCESS_TTL_S = 60 * 60;
 
+export interface TestAuthHooks {
+  /** Count this email or user id against the sign-in or sign-out limit. May throw. */
+  limitAccount?: (account: string) => void;
+}
+
 export interface TestAuth {
-  handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
+  handle(req: IncomingMessage, res: ServerResponse, url: URL, hooks?: TestAuthHooks): Promise<boolean>;
   jwks(): { keys: Array<Record<string, unknown>> };
   /** Same thing a browser would fetch, for the in-process verifier. */
   fetchJwks: typeof fetch;
@@ -87,7 +92,7 @@ export function createTestAuth(opts: { pool: pg.Pool; preview: boolean; now?: ()
   return {
     jwks, fetchJwks, revokedSessions,
     sign: (c) => sign(c),
-    async handle(req, res, url) {
+    async handle(req, res, url, hooks) {
       const path = url.pathname;
       if (!path.startsWith("/auth/v1/")) return false;
       if (req.method === "GET" && path === "/auth/v1/.well-known/jwks.json") { reply(res, 200, jwks()); return true; }
@@ -96,6 +101,7 @@ export function createTestAuth(opts: { pool: pg.Pool; preview: boolean; now?: ()
         const body = await readBody(req);
         if (grant === "password") {
           const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+          if (email) hooks?.limitAccount?.(email);
           const password = typeof body.password === "string" ? body.password : "";
           const r = await opts.pool.query<{ user_id: string; email: string; password_salt: string | null; password_hash: string | null }>(
             "select user_id, email, password_salt, password_hash from preview_test_accounts where lower(email) = $1", [email]);
@@ -115,6 +121,7 @@ export function createTestAuth(opts: { pool: pg.Pool; preview: boolean; now?: ()
           const token = typeof body.refresh_token === "string" ? body.refresh_token : "";
           const known = refresh.get(token);
           if (!known || revokedSessions.has(known.sessionId)) { reply(res, 400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" }); return true; }
+          hooks?.limitAccount?.(known.userId);
           refresh.delete(token);
           const a = await opts.pool.query<{ email: string }>("select email from preview_test_accounts where user_id = $1", [known.userId]);
           reply(res, 200, session(known.userId, a.rows[0]?.email ?? "", known.sessionId));
@@ -125,10 +132,12 @@ export function createTestAuth(opts: { pool: pg.Pool; preview: boolean; now?: ()
       }
       if (req.method === "POST" && path === "/auth/v1/logout") {
         const auth = req.headers.authorization?.replace(/^bearer\s+/i, "");
+        let claims: { session_id?: string; sub?: string } = {};
         try {
-          const claims = auth ? JSON.parse(Buffer.from(auth.split(".")[1] ?? "", "base64url").toString("utf8")) as { session_id?: string } : {};
-          if (claims.session_id) revokedSessions.add(claims.session_id);
-        } catch { /* nothing to revoke */ }
+          claims = auth ? JSON.parse(Buffer.from(auth.split(".")[1] ?? "", "base64url").toString("utf8")) as { session_id?: string; sub?: string } : {};
+        } catch { claims = {}; }
+        if (claims.sub) hooks?.limitAccount?.(claims.sub);
+        if (claims.session_id) revokedSessions.add(claims.session_id);
         reply(res, 204, null);
         return true;
       }

@@ -52,6 +52,15 @@ const call = (side: "dealer" | "buyer", user: string | null, method: string, pat
 async function status(p: Promise<{ status: number }>): Promise<number> {
   try { return (await p).status; } catch (e) { return (e as { status?: number }).status ?? 500; }
 }
+async function caught(p: ReturnType<typeof call>): Promise<{ status: number; body: { message?: string; code?: string } }> {
+  try {
+    const r = await p;
+    return { status: r.status, body: r.body as { message?: string; code?: string } };
+  } catch (e) {
+    const err = e as { status?: number; message?: string; code?: string };
+    return { status: err.status ?? 500, body: { message: err.message, code: err.code } };
+  }
+}
 
 test("migrations create the switch OFF and keep old behaviour", { skip: !base }, async (t) => {
   if (!ok) return t.skip("local Postgres not reachable");
@@ -174,6 +183,47 @@ test("preview picker is refused outside preview", { skip: !base }, async (t) => 
   // no recorded fixtures outside preview, and no engine configured here: the car is held, never sent
   const r = await live.handle("dealer", DEALER, "POST", "/send", new URLSearchParams(), { year: 2022, make: "Toyota", model: "RAV4", badge: "GX", km: 1000, state: "NSW", buyerIds: "all" });
   assert.equal(r.status, 409);
+});
+
+test("a note that identifies the dealer is refused, and the dealer's own ad is not stored", { skip: !base }, async (t) => {
+  if (!ok) return t.skip();
+  const before = (await q("select count(*)::int n from wholesale_tenders")).rows[0].n;
+  const phone = await caught(call("dealer", DEALER, "POST", "/send", { rego: "TEST02", km: 58400, buyerIds: "all", note: "Ring 0412 345 678" }));
+  assert.equal(phone.status, 400);
+  assert.match(phone.body.message ?? "", /phone number/);
+  const named = await caught(call("dealer", DEALER, "POST", "/send", { rego: "TEST02", km: 58400, buyerIds: "all", note: "Preview Test Dealer can deliver" }));
+  assert.equal(named.status, 400);
+  assert.match(named.body.message ?? "", /dealership name/);
+  const email = await caught(call("dealer", DEALER, "POST", "/send", { rego: "TEST02", km: 58400, buyerIds: "all", note: "pat@example.invalid" }));
+  assert.equal(email.status, 400);
+  assert.match(email.body.message ?? "", /email address/);
+  const web = await caught(call("dealer", DEALER, "POST", "/send", { rego: "TEST02", km: 58400, buyerIds: "all", note: "https://dealer.example/car" }));
+  assert.equal(web.status, 400);
+  assert.match(web.body.message ?? "", /web address/);
+  const abn = await caught(call("dealer", DEALER, "POST", "/send", { rego: "TEST02", km: 58400, buyerIds: "all", note: "ABN 51 824 753 556" }));
+  assert.equal(abn.status, 400);
+  assert.match(abn.body.message ?? "", /ABN/);
+  const stock = await caught(call("dealer", DEALER, "POST", "/send", { rego: "TEST02", km: 58400, buyerIds: "all", note: "Stock OC0123" }));
+  assert.equal(stock.status, 400);
+  assert.match(stock.body.message ?? "", /stock number/);
+  assert.equal((await q("select count(*)::int n from wholesale_tenders")).rows[0].n, before);
+  // The sample floor is this advert. Price and km are close, and the link matches. Round 60,000 is covered in own-ad.test.ts.
+  const sent = await call("dealer", DEALER, "POST", "/send", {
+    rego: "TEST02", km: 66_900, buyerIds: "all", note: "Two keys",
+    adLink: "https://www.example.invalid/ads/2021-rav4-gx-hybrid-66900km?utm=1", askingPrice: 35_200,
+  });
+  assert.equal(sent.status, 201);
+  const code = (sent.body as { code: string }).code;
+  const snap = (await q("select seller_notes, value_car_snapshot from wholesale_tenders where public_code = $1", [code])).rows[0];
+  assert.equal(snap.seller_notes, "Two keys");
+  const stored = JSON.stringify(snap.value_car_snapshot);
+  assert.equal(stored.includes("66900km"), false);
+  assert.match(stored, /61300km/);
+  const buyer = (await call("buyer", BUYER(1), "GET", "/buyer/cars")).body as { cars: Array<{ code: string; note: string; guide: { floor_car: { link: string } } }> };
+  const car = buyer.cars.find((c) => c.code === code);
+  assert.equal(car?.note, "Two keys");
+  assert.equal(JSON.stringify(car).includes("66900km"), false);
+  assert.equal(JSON.stringify(car).includes("Preview Test Dealer"), false);
 });
 
 test("undo files put everything back (and refuse while franchise requests exist)", { skip: !base }, async (t) => {

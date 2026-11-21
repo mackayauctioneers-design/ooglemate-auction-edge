@@ -1,4 +1,5 @@
 import { portalApi } from "../api";
+import { portalSupabase } from "../runtime";
 
 /** Only ever send someone on to a screen inside the portal. */
 export function safeNext(raw: string | null | undefined): string | null {
@@ -12,7 +13,7 @@ export function safeNext(raw: string | null | undefined): string | null {
  */
 export async function signOutEverywhere(): Promise<void> {
   try {
-    const { supabase } = await import("@/integrations/supabase/client");
+    const supabase = await portalSupabase();
     // Global sign-out tells the sign-in server to end the session and removes the browser copy. If the server cannot be reached,
     // still remove the browser copy.
     const { error } = await supabase.auth.signOut();

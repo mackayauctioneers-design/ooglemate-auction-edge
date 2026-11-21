@@ -143,7 +143,7 @@ function HowWeGotThis({ children }: { children: ReactNode }) {
   );
 }
 
-function Input({ label, value, readOnly = true, mono = false, onChange }: { label: string; value: string; readOnly?: boolean; mono?: boolean; onChange?: (v: string) => void }) {
+function Input({ label, value, readOnly = true, mono = false, onChange, testId }: { label: string; value: string; readOnly?: boolean; mono?: boolean; onChange?: (v: string) => void; testId?: string }) {
   return (
     <label className="block">
       <span className="text-xs text-neutral-500">{label}</span>
@@ -151,6 +151,7 @@ function Input({ label, value, readOnly = true, mono = false, onChange }: { labe
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange?.(e.target.value)}
+        data-testid={testId}
         className={`mt-1 block min-h-12 w-full border border-neutral-300 px-3 text-base focus:border-neutral-950 focus:outline-none ${mono ? "font-mono uppercase" : ""}`}
       />
     </label>
@@ -222,22 +223,37 @@ function useCarParams(): CarParams & { ready: boolean } {
   const make = params.get("make") ?? "";
   const model = params.get("model") ?? "";
   const state = params.get("state") ?? "";
+  const adLink = params.get("adLink") ?? "";
+  const asking = params.get("asking") ?? "";
   const typed = Boolean(year && make && model && state);
-  return { rego, km: Number.isFinite(kmValue) ? kmValue : NaN, badge, year, make, model, state, ready: (Boolean(rego) || typed) && Number.isFinite(kmValue) && params.get("km") !== null };
+  return { rego, km: Number.isFinite(kmValue) ? kmValue : NaN, badge, year, make, model, state, adLink, asking, ready: (Boolean(rego) || typed) && Number.isFinite(kmValue) && params.get("km") !== null };
 }
 
 function carQuery(p: Partial<CarParams> & { km: number }): string {
   const q = new URLSearchParams({ km: String(p.km) });
-  for (const k of ["rego", "badge", "year", "make", "model", "state"] as const) if (p[k]) q.set(k, p[k] as string);
+  for (const k of ["rego", "badge", "year", "make", "model", "state", "adLink", "asking"] as const) if (p[k]) q.set(k, p[k] as string);
   return q.toString();
 }
 
 /* ---------- 1. Rego and odometer ---------- */
 
+/** Optional advert for this car. Passed on the guide and the send so buyers never see that link. */
+function OwnAdFields({ link, asking, onLink, onAsking }: { link: string; asking: string; onLink: (v: string) => void; onAsking: (v: string) => void }) {
+  return (
+    <div className="mt-6 space-y-3" data-testid="own-ad-fields">
+      <Input label="Your ad link (if listed)" value={link} readOnly={false} onChange={onLink} testId="own-ad-link" />
+      <div className="max-w-xs">
+        <Input label="Asking price" value={asking} readOnly={false} onChange={onAsking} testId="own-asking-price" />
+      </div>
+      <p className="text-xs text-neutral-400" data-testid="own-ad-hint">Used only to leave your own ad out. Buyers never see this.</p>
+    </div>
+  );
+}
+
 /** Live: no rego lookup is connected yet, so the dealer types the car. The odometer still has to be confirmed. */
 function ManualStart() {
   const navigate = useNavigate();
-  const [f, setF] = useState({ rego: "", year: "", make: "", model: "", badge: "", state: "", odo: "" });
+  const [f, setF] = useState({ rego: "", year: "", make: "", model: "", badge: "", state: "", odo: "", adLink: "", asking: "" });
   const [checked, setChecked] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
   const kmValue = Number(f.odo.replace(/[^0-9]/g, ""));
@@ -254,13 +270,14 @@ function ManualStart() {
           <Input label="Badge" value={f.badge} readOnly={false} onChange={set("badge")} />
         </div>
         <div className="mt-6 max-w-xs"><Input label="Odometer (km)" value={f.odo} readOnly={false} onChange={set("odo")} /></div>
+        <OwnAdFields link={f.adLink} asking={f.asking} onLink={set("adLink")} onAsking={set("asking")} />
         <label className="mt-4 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="h-4 w-4 accent-neutral-950" data-testid="odo-checked" />
           I've checked the odometer on the car
         </label>
       </Section>
       <Actions>
-        <Primary testId="get-guide" disabled={!ready} onClick={() => navigate(`/portal/wholesale/guide?${carQuery({ rego: f.rego, year: f.year, make: f.make, model: f.model, badge: f.badge, state: f.state, km: kmValue })}`)}>
+        <Primary testId="get-guide" disabled={!ready} onClick={() => navigate(`/portal/wholesale/guide?${carQuery({ rego: f.rego, year: f.year, make: f.make, model: f.model, badge: f.badge, state: f.state, km: kmValue, adLink: f.adLink.trim(), asking: f.asking.replace(/[^0-9]/g, "") })}`)}>
           Get the guide
         </Primary>
       </Actions>
@@ -278,6 +295,8 @@ function PreviewStart({ info }: { info: ReturnType<typeof useLoad<Info>> }) {
   const navigate = useNavigate();
   const [rego, setRego] = useState("");
   const [odo, setOdo] = useState("");
+  const [adLink, setAdLink] = useState("");
+  const [asking, setAsking] = useState("");
   const [checked, setChecked] = useState(false);
   const [car, setCar] = useState<Awaited<ReturnType<typeof wholesaleApi.lookup>>["car"] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -310,6 +329,7 @@ function PreviewStart({ info }: { info: ReturnType<typeof useLoad<Info>> }) {
           </p>
         ) : null}
         {error ? <p className="mt-3 text-sm text-neutral-500">{error}</p> : null}
+        <OwnAdFields link={adLink} asking={asking} onLink={setAdLink} onAsking={setAsking} />
       </Section>
       {car ? (
         <Section testId="found-car">
@@ -328,7 +348,7 @@ function PreviewStart({ info }: { info: ReturnType<typeof useLoad<Info>> }) {
         <Primary
           testId="get-guide"
           disabled={!car || !checked || !kmValue}
-          onClick={() => car && navigate(`/portal/wholesale/guide?${carQuery({ rego: car.rego, km: kmValue })}`)}
+          onClick={() => car && navigate(`/portal/wholesale/guide?${carQuery({ rego: car.rego, km: kmValue, adLink: adLink.trim(), asking: asking.replace(/[^0-9]/g, "") })}`)}
         >
           Get the guide
         </Primary>
@@ -424,7 +444,7 @@ function LiveCheck({ check }: { check: Guide["live_check"] }) {
 
 function useGuide() {
   const p = useCarParams();
-  const state = useLoad<GuideReply | null>(() => (p.ready ? wholesaleApi.guide(p) : Promise.resolve(null)), [p.rego, p.km, p.badge, p.year, p.make, p.model, p.state, p.ready]);
+  const state = useLoad<GuideReply | null>(() => (p.ready ? wholesaleApi.guide(p) : Promise.resolve(null)), [p.rego, p.km, p.badge, p.year, p.make, p.model, p.state, p.adLink, p.asking, p.ready]);
   // While Carsales is being checked live, ask again after the engine's own wait (never faster than 20 s). The server decides
   // whether a call goes out, so this cannot burn the key's hourly limit.
   const check = state.data?.guide?.live_check;
@@ -519,7 +539,7 @@ export function WholesaleSendPage() {
           </Section>
           <Section title="Note for buyers (optional)">
             <textarea rows={2} value={note ?? r.car.notes ?? ""} onChange={(e) => setNote(e.target.value)} className="block w-full border border-neutral-300 p-3 text-sm" data-testid="buyer-note" />
-            <p className="mt-2 text-xs text-neutral-400" data-testid="buyer-note-hint">Buyers see this note and "Franchise dealer, {r.car.state}". Don't include your name or number.</p>
+            <p className="mt-2 text-xs text-neutral-400" data-testid="buyer-note-hint">Buyers see this note and "Franchise dealer, {r.car.state}". Don't include your name, phone, email, website, ABN or stock number.</p>
           </Section>
           {error ? <p className="text-sm text-neutral-600" data-testid="send-error">{error}</p> : null}
           {r.guide.live_check?.state === "checking" ? <div data-testid="send-waiting"><LiveCheck check={r.guide.live_check} /><p className="mt-1 text-xs text-neutral-500">This can go to buyers as soon as the live check finishes. The page updates by itself.</p></div> : null}
@@ -691,10 +711,10 @@ export function WholesaleHandoverPage() {
         const name = r.prices.find((x) => x.bidId === r.acceptedBidId)?.name ?? r.buyer.person;
         const collected = done || r.outcome === "completed";
         return (
-          <Frame testId="wholesale-handover" title={`Sold to ${name} for ${aud(cents(r.finalSaleCents))}`} sub="You've both got each other's details. Sort out pickup and payment directly.">
+          <Frame testId="wholesale-handover" title={`Sold to ${name} for ${aud(cents(r.finalSaleCents))}`} sub="You have the buyer's details. They are not given your name, phone or email. Contact them to sort out pickup and payment.">
             <div className="grid gap-6 sm:grid-cols-2">
               <Contact title="Buyer" c={r.buyer} />
-              <Contact title="Your details (shared with the buyer)" c={r.dealer} />
+              <Contact title="Your yard (buyers are not shown this)" c={r.dealer} />
             </div>
             <Actions>
               {collected

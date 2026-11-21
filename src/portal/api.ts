@@ -1,3 +1,4 @@
+import { apiUrl, authHeaders, fetchCredentials } from "./runtime";
 import type { AlertView, FindCard, FindDetail, FindStatus, ImportResult, Insights, Me, YardProfile } from "./types";
 
 export class ApiError extends Error {
@@ -15,12 +16,14 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path, {
+    const bearer = await authHeaders();
+    response = await fetch(apiUrl(path), {
       ...init,
-      credentials: "include",
+      credentials: fetchCredentials,
       headers: {
         accept: "application/json",
         ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...bearer,
         ...init?.headers,
       },
     });
