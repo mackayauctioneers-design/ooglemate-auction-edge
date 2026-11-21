@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { isLikelyOwnAd, type AdLike, type OwnAdHint } from "./own-ad.ts";
 
 /**
  * Carbitrage guide for a wholesale request. One place that turns the market engine's valuation
@@ -88,12 +89,67 @@ export interface Guide {
 
 const VERSION = "vc-2026-11-19.1";
 
+/**
+ * Buyer-facing year-below line. Only the price, year, km, link, source and note.
+ * Anything else the engine attached (seller, phone, stock) stays off the snapshot.
+ */
+function publicYearBelow(y: EngineValuation["year_below"] | null | undefined): Guide["year_below"] {
+  if (!y || typeof y !== "object") return null;
+  const row = y as Record<string, unknown>;
+  const price = row.price_ex_gov;
+  const year = row.year;
+  const km = row.km;
+  if (typeof price !== "number" || !(price > 0) || typeof year !== "number" || typeof km !== "number") return null;
+  const source = typeof row.source === "string" && row.source.trim() ? row.source : undefined;
+  const note = typeof row.note === "string" && row.note.trim() ? row.note : undefined;
+  return {
+    price_ex_gov: price,
+    year,
+    km,
+    link: typeof row.link === "string" ? row.link : null,
+    ...(source ? { source } : {}),
+    ...(note ? { note } : {}),
+  };
+}
+
+function publicConfidence(c: EngineValuation["confidence"]): Guide["confidence"] {
+  if (!c || typeof c !== "object") return { score: 0, label: "low" };
+  const row = c as { score?: unknown; label?: unknown };
+  return {
+    score: typeof row.score === "number" ? row.score : 0,
+    label: typeof row.label === "string" ? row.label : "low",
+  };
+}
+
 function ad(x: EngineAd): GuideAd {
   return {
     title: x.title ?? null, year: x.year, badge: x.badge ?? null, series: x.series ?? null, drivetrain: x.drivetrain ?? null,
     km: x.km, price_ex_gov: x.price_ex_gov, km_adjusted_price: x.km_adjusted_price ?? null, state: x.state ?? null,
     link: x.link ?? null, match: x.match ?? null,
   };
+}
+
+/**
+ * Drop the dealer's own advert from the floor, the comps, the year-below line and the outliers
+ * before the snapshot is stored. If the floor car goes, the next comp of that same year becomes
+ * the floor: cheapest ex-gov price, then lower km, which is the engine's own order. No other
+ * floor rule changes. No remaining comp of that year means no floor, so nothing is sent.
+ */
+export function excludeOwnAds(v: EngineValuation, carKm: number, own: OwnAdHint | null | undefined): EngineValuation {
+  if (!own || (!own.link && !(typeof own.price === "number" && own.price > 0))) return v;
+  const ownAd = (ad: AdLike | null | undefined) => ad != null && isLikelyOwnAd(ad, carKm, own);
+  const floorDropped = ownAd(v.floor_car);
+  const comps = (v.comps ?? []).filter((c) => !ownAd(c));
+  const outlier_ads = (v.outlier_ads ?? []).filter((o) => !ownAd(o));
+  const year_below = v.year_below && ownAd(v.year_below) ? null : (v.year_below ?? null);
+  if (!floorDropped) return { ...v, comps, outlier_ads, year_below };
+  const floorYear = v.floor_car?.year ?? null;
+  const next = comps
+    .filter((c) => c.price_ex_gov > 0 && (floorYear == null || c.year === floorYear) && c.link !== v.floor_car?.link)
+    .slice()
+    .sort((a, b) => a.price_ex_gov - b.price_ex_gov || (a.km ?? 0) - (b.km ?? 0))[0] ?? null;
+  if (!next) return { ...v, floor_car: null, comps, outlier_ads, year_below, status: v.status === "pending" ? "pending" : "no_floor" };
+  return { ...v, floor_car: next, comps, outlier_ads, year_below };
 }
 
 /** Null when the engine has no usable floor. A car is held, never sent, in that case. */
@@ -115,7 +171,7 @@ export function mapGuide(v: EngineValuation, plateYear: number, now: Date): Guid
     max_buy: v.max_buy ?? null,
     thinking: v.max_buy ?? null,
     cautious: v.buy_target ?? null,
-    confidence: v.confidence ?? { score: 0, label: "low" },
+    confidence: publicConfidence(v.confidence),
     provisional: Boolean(v.provisional),
     thin_evidence: null,
     state: null,
@@ -124,7 +180,7 @@ export function mapGuide(v: EngineValuation, plateYear: number, now: Date): Guid
     floor_basis: v.floor_basis ?? null,
     floor_basis_note: v.floor_basis && v.floor_basis !== "exact_year" ? (v.floor_basis_note ?? "The floor did not come from the exact plate year.") : null,
     // When the floor itself is the year-below car, the reference line would only repeat it.
-    year_below: v.year_below && v.year_below.link && v.year_below.link === floorAd.link ? null : (v.year_below ?? null),
+    year_below: publicYearBelow(v.year_below && v.year_below.link && v.year_below.link === floorAd.link ? null : v.year_below),
     outlier_ads: (v.outlier_ads ?? [])
       .filter((o) => o.sets_floor_if_trusted !== false)
       .slice(0, 2)

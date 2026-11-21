@@ -1,6 +1,8 @@
 import pg from "pg";
 import { ServiceError } from "./domain.ts";
-import { fetchValuation, mapGuide, type CarSpec, type Guide, type MarketApiConfig } from "./wholesale-guide.ts";
+import { parseOwnAd } from "./own-ad.ts";
+import { sellerNoteRefusal } from "./seller-note.ts";
+import { excludeOwnAds, fetchValuation, mapGuide, type CarSpec, type Guide, type MarketApiConfig } from "./wholesale-guide.ts";
 
 /**
  * Franchise wholesale API. Every read and write goes through the carbitrage_wholesale_*_v1 functions in
@@ -105,14 +107,15 @@ export function createWholesale(opts: WholesaleOptions) {
     };
   }
 
-  async function valuate(c: CarInput): Promise<{ guide: Guide | null; reason: string | null; source: string; engine: unknown; route: unknown; fresh: unknown; checking: boolean }> {
+  async function valuate(c: CarInput, ownAd?: { link?: string; price?: number }): Promise<{ guide: Guide | null; reason: string | null; source: string; engine: unknown; route: unknown; fresh: unknown; checking: boolean }> {
     // Outside preview there is no recorded fixture to fall back on, and cars before 2020 would start a paid live search.
     if (!preview && (!opts.market || c.year < 2020)) {
       return { guide: null, reason: !opts.market ? "The valuation engine is not connected." : "Cars before 2020 need a live search, which is not switched on yet.", source: "none", engine: null, route: null, fresh: null, checking: false };
     }
     const spec: CarSpec = { year: c.year, make: c.make, model: c.model, badge: c.badge, km: c.km, state: c.state, rego: c.rego ?? undefined, fixture: c.fixture };
-    const result = await fetchValuation(spec, opts.market);
-    const mapped = mapGuide(result.valuation, c.year, opts.now());
+    const result = await fetchValuation(spec, opts.market, ownAd);
+    // The engine drops the dealer's own ad when it is told the link or price. This still runs, including on a round km the engine misses, before the snapshot is stored.
+    const mapped = mapGuide(excludeOwnAds(result.valuation, c.km, ownAd), c.year, opts.now());
     const lp = result.livePending ?? null;
     const live_check: Guide["live_check"] = lp
       ? { state: lp.timedOut ? "gave_up" : "checking", eta_seconds: lp.etaSeconds, poll_after_s: lp.pollAfterS }
@@ -196,7 +199,7 @@ export function createWholesale(opts: WholesaleOptions) {
     if (method === "POST" && path === "/guide") {
       await rpc("select public.carbitrage_wholesale_buyers_v1($1) as r", [user]); // dealers only
       const c = await carFrom(body);
-      const v = await valuate(c);
+      const v = await valuate(c, parseOwnAd(body));
       if (preview && c.rego) {
         // A held car is remembered so the dealer's Updates list can say so. It clears the moment a floor exists.
         const dealerId = (await rpc<{ dealer: { id: string } }>("select public.carbitrage_wholesale_whoami_v1($1) as r", [user])).dealer.id;
@@ -216,11 +219,14 @@ export function createWholesale(opts: WholesaleOptions) {
       const c = await carFrom(body);
       const note = typeof body.note === "string" ? body.note.trim().slice(0, 600) : "";
       const approved = await rpc<Array<{ id: string }>>("select public.carbitrage_wholesale_buyers_v1($1) as r", [user]);
+      const who = await rpc<{ dealer: { name: string } | null }>("select public.carbitrage_wholesale_whoami_v1($1) as r", [user]);
+      const refusal = sellerNoteRefusal(note, who.dealer?.name ?? "");
+      if (refusal) bad(400, "note_refused", refusal);
       const wanted = body.buyerIds === "all" ? approved.map((b) => b.id) : Array.isArray(body.buyerIds) ? (body.buyerIds as unknown[]).filter((x): x is string => typeof x === "string") : [];
       const targets = approved.filter((b) => wanted.includes(b.id)).map((b) => b.id);
       if (targets.length === 0) bad(400, "no_buyers", "Pick at least one approved buyer");
-      // The floor is always recomputed here. Nothing a browser sends can set it.
-      const v = await valuate(c);
+      // The floor is always recomputed here. Nothing a browser sends can set it. The dealer's own ad is passed through so it cannot become the floor or a comp.
+      const v = await valuate(c, parseOwnAd(body));
       if (v.guide && v.checking) {
         // The pool answer is on screen, but a live Carsales check is still running behind it. It can move the floor, so it waits.
         return { status: 409, body: { code: "live_check_running", message: "Still checking Carsales live. Try again in a minute or two, the figures may change." } };

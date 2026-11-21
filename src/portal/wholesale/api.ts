@@ -1,6 +1,7 @@
 /* Client for the preview wholesale API. Field names follow the real wholesale_tenders / wholesale_bids columns
    where they appear (public_code, seller_notes, value_car_floor_cents, amount_cents). */
 import { useCallback, useEffect, useState } from "react";
+import { apiUrl, authHeaders, fetchCredentials } from "../runtime";
 
 export interface GuideAd {
   title: string | null; year: number | null; badge: string | null; series: string | null; drivetrain: string | null;
@@ -29,7 +30,13 @@ export interface CarInfo {
 }
 export interface Me { dealer: { id: string; name: string } | null; buyer: { id: string; name: string } | null }
 export interface GuideReply { held: boolean; reason: string | null; guide: Guide | null; source: string; engine: string | null; route: string | null; freshExactYearAds: number | null; car: CarInfo & { km: number } }
-export interface CarParams { rego: string; km: number; badge: string; year: string; make: string; model: string; state: string }
+export interface CarParams {
+  rego: string; km: number; badge: string; year: string; make: string; model: string; state: string;
+  /** Optional Carsales (or other) advert for this car. Sent so that ad is left out of the buyer guide. */
+  adLink: string;
+  /** Asking price on that advert, digits only. */
+  asking: string;
+}
 export interface Info { mode: "preview" | "live"; valuationSource: "market_api" | "recorded"; dealer: { name: string }; manualEntry?: boolean; testCars: Array<{ rego: string; label: string; km: number }> }
 export interface Buyer { id: string; name: string }
 export interface PriceRow { bidId: string; buyerId: string; name: string; amountCents: number; note: string | null; at: string }
@@ -62,9 +69,10 @@ export class WholesaleApiError extends Error {
 async function call<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`/api/wholesale${path}`, {
-      method: init?.method ?? "GET", credentials: "include",
-      headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}) },
+    const bearer = await authHeaders();
+    res = await fetch(apiUrl(`/api/wholesale${path}`), {
+      method: init?.method ?? "GET", credentials: fetchCredentials,
+      headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}), ...bearer },
       body: init?.body ? JSON.stringify(init.body) : undefined,
     });
   } catch {
@@ -79,6 +87,9 @@ function carBody(p: Partial<CarParams> & { km: number }) {
   const out: Record<string, unknown> = { km: p.km };
   for (const k of ["rego", "badge", "make", "model", "state"] as const) if (p[k]) out[k] = p[k];
   if (p.year) out.year = Number(p.year);
+  if (p.adLink) out.adLink = p.adLink;
+  const asking = Number((p.asking ?? "").replace(/[^0-9]/g, ""));
+  if (asking > 0) out.askingPrice = asking;
   return out;
 }
 

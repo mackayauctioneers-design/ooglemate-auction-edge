@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import carbitrageMarkLight from "@/assets/carbitrage-mark-light.png";
 import { ApiError, portalApi } from "../api";
 import { wholesaleApi } from "./api";
+import { portalSupabase } from "../runtime";
 import { safeNext, signOutEverywhere } from "./auth";
 
 /** The Carbitrage wordmark used on every wholesale screen. */
@@ -49,7 +50,7 @@ export default function WholesaleSignIn({ testEnvironment }: { testEnvironment: 
     // Already signed in on this browser: carry on without asking again.
     (async () => {
       try {
-        const { supabase } = await import("@/integrations/supabase/client");
+        const supabase = await portalSupabase();
         const { data } = await supabase.auth.getSession();
         if (!data.session) return;
         await portalApi.exchangeSupabaseToken(data.session.access_token);
@@ -64,7 +65,7 @@ export default function WholesaleSignIn({ testEnvironment }: { testEnvironment: 
     setBusy(true);
     setError(null);
     try {
-      const { supabase } = await import("@/integrations/supabase/client");
+      const supabase = await portalSupabase();
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (authError || !data.session) throw new ApiError(401, "unauthenticated", "Email or password is incorrect");
       await portalApi.exchangeSupabaseToken(data.session.access_token);

@@ -176,7 +176,7 @@ const App = () => (
             <Routes>
               {/* === DEALER ROUTES === */}
               <Route path="/westside" element={<WestsidePage />} />
-              <Route path="/" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
+              <Route path="/" element={<Navigate to="/portal/login" replace />} />
               <Route path="/dealer-home" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />

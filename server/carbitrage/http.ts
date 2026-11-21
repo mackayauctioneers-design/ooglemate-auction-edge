@@ -6,7 +6,9 @@ import { ServiceError, type Principal, type Store } from "./domain.ts";
 import { PERSONAS, type Persona } from "./fixtures.ts";
 import { handleMcp, toolCatalog } from "./mcp.ts";
 import { createServices, type IngestBody } from "./services.ts";
+import { applyCors } from "./cors.ts";
 import { previewGateAllows, previewGateCookie, previewGatePage, previewPasswordMatches } from "./preview-guard.ts";
+import { RATE_RULES, createRateLimiter, matchRateRule, requestIp, type RateLimiter, type RateRule } from "./rate-limit.ts";
 import type { DataPort } from "./store.ts";
 import type { Wholesale } from "./wholesale.ts";
 import type { TestAuth } from "./test-auth.ts";
@@ -41,6 +43,8 @@ export interface ServerOptions {
   authNow?: (() => Date) | null;
   /** Private preview only: the old "Preview as" buyer picker and sign-in-free buyer screens. Off once real sign-in is on. */
   wholesalePicker?: boolean;
+  /** Override the documented limits. Tests use a short window. */
+  rateRules?: readonly RateRule[];
 }
 
 export function memoryDirectory(store: Store): AuthDirectory {
@@ -65,8 +69,9 @@ export function memoryDirectory(store: Store): AuthDirectory {
 }
 
 export function startCarbitrageServer(opts: ServerOptions, port = 0, host = "127.0.0.1") {
+  const rateLimiter = createRateLimiter();
   const server = createServer((req, res) => {
-    void handleRequest(opts, req, res);
+    void handleRequest(opts, req, res, rateLimiter);
   });
   return new Promise<{ url: string; port: number; close: () => Promise<void> }>((resolve) => {
     server.listen(port, host, () => {
@@ -81,17 +86,32 @@ export function startCarbitrageServer(opts: ServerOptions, port = 0, host = "127
   });
 }
 
-async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: ServerResponse, rateLimiter: RateLimiter): Promise<void> {
   try {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const services = createServices(opts.data, opts.now);
     const path = url.pathname;
+    const ip = requestIp(req);
+    const rules = opts.rateRules;
+    const limit = (method: string, account: string | null, scope?: { ip?: boolean; account?: boolean }) => {
+      const rule = matchRateRule(method, path, rules ?? RATE_RULES);
+      if (rule) rateLimiter.consume(rule, ip, account, opts.now().getTime(), scope);
+    };
+
+    if (applyCors(req, res) === "done") return;
 
     if (opts.previewGate && !(await allowPreview(opts.previewGate.secret, req, res, path))) {
       return;
     }
 
-    if (opts.testAuth && path.startsWith("/auth/v1/") && (await opts.testAuth.handle(req, res, url))) return;
+    if (opts.testAuth && path.startsWith("/auth/v1/")) {
+      const method = req.method ?? "GET";
+      limit(method, null, { account: false });
+      const handled = await opts.testAuth.handle(req, res, url, {
+        limitAccount: (account) => limit(method, account, { ip: false }),
+      });
+      if (handled) return;
+    }
 
     // Deploy-time patch (preview only): the gate has already passed, so serve the built site before the sign-in check.
     if (req.method === "GET" && opts.staticRoot && !path.startsWith("/api/") && path !== "/mcp" && !path.startsWith("/.well-known/") && serveStatic(opts.staticRoot, path, res)) return;
@@ -127,12 +147,14 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/session") {
+      limit("POST", null, { account: false });
       const body = await readJson(req);
       if ("userId" in body || "yardId" in body || "memberships" in body) {
         throw new ServiceError(400, "invalid_payload", "Membership claims are not accepted from the client");
       }
       if (typeof body.accessToken === "string") {
         const claims = await verifyAccessToken(opts, body.accessToken);
+        if (claims && claims !== "not_configured") limit("POST", claims.sub, { ip: false });
         if (claims === "not_configured") throw new ServiceError(503, "auth_not_configured", "Sign-in verification is not configured");
         if (!claims) throw new ServiceError(401, "unauthenticated", "Access token was rejected");
         res.setHeader("Set-Cookie", sessionCookie(signSession(claims.sub, opts.sessionSecret, opts.now())));
@@ -140,6 +162,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
       }
       if (!opts.demoMode || opts.testAuth) throw new ServiceError(404, "demo_disabled", "Password sign-in is disabled outside the local demo");
       const email = stringField(body, "email");
+      limit("POST", email, { ip: false });
       const password = stringField(body, "password");
       const user = await opts.directory.demoPassword(email);
       if (!user || !verifyPassword(password, { id: user.userId, email, displayName: user.displayName, passwordHash: user.passwordHash, passwordSalt: user.passwordSalt })) {
@@ -150,6 +173,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/session/demo") {
+      limit("POST", null, { account: false });
       if (!opts.demoMode || opts.testAuth) throw new ServiceError(404, "demo_disabled", "Demo sign-in is disabled");
       const body = await readJson(req);
       const persona = stringField(body, "persona");
@@ -157,6 +181,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         throw new ServiceError(400, "invalid_payload", "Unknown demo persona");
       }
       const email = personaEmail(persona as Persona);
+      limit("POST", email, { ip: false });
       const user = await opts.directory.demoPassword(email);
       if (!user) throw new ServiceError(404, "demo_disabled", "Demo user is not seeded");
       res.setHeader("Set-Cookie", sessionCookie(signSession(user.userId, opts.sessionSecret, opts.now())));
@@ -164,6 +189,8 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (req.method === "DELETE" && path === "/api/carbitrage/session") {
+      const cookie = readCookie(req.headers.cookie, SESSION_COOKIE);
+      limit("DELETE", cookie ? readSession(cookie, opts.sessionSecret, opts.now()) : null);
       res.setHeader("Set-Cookie", clearSessionCookie());
       return send(res, 200, { ok: true });
     }
@@ -193,14 +220,20 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
       // Who is calling comes only from the server's own sign-in. Preview personas map to fixed preview users; in
       // production this is the Supabase user id from the verified JWT. The browser never says who it is.
       let signedIn: string | null = null;
+      let account: string | null = null;
+      let authError: unknown = null;
       try {
         const principal = await userPrincipal(opts, req);
         if (principal.kind !== "user") throw new ServiceError(401, "unauthenticated", "Sign in required");
+        account = principal.userId;
         signedIn = opts.wholesaleUser ? await opts.wholesaleUser(principal.userId) : principal.userId;
       } catch (err) {
-        // A buyer in the private preview may arrive with no sign-in at all and use the preview picker.
-        if (!(isBuyer && opts.previewGate && opts.wholesalePicker)) throw err;
+        authError = err;
       }
+      // Count a failed sign-in against the IP only, then refuse. A signed-in caller counts against both.
+      limit(req.method ?? "GET", authError ? null : account);
+      // A buyer in the private preview may arrive with no sign-in at all and use the preview picker.
+      if (authError && !(isBuyer && opts.previewGate && opts.wholesalePicker)) throw authError;
       const body = req.method === "POST" ? await readJson(req).catch(() => ({} as Record<string, unknown>)) : {};
       const out = await opts.wholesale.handle(isBuyer ? "buyer" : "dealer", signedIn, req.method ?? "GET", sub, url.searchParams, body);
       return send(res, out.status, out.body);
