@@ -1,6 +1,7 @@
 # Architecture rules
 
 - Public market statistics are fetched directly from the VPS public aggregate endpoint by one small query hook; keep this page independent of authentication and backend functions to preserve the public read-only boundary.
-- The portal desk reads only the VPS desk queue, DNA, stock and auctions using the portal session bearer token and no cookies; prices, stages and gaps are server-supplied (never derived), and synthetic fallback is restricted to development and Lovable preview hosts to preserve tenant isolation and the read-only boundary.
+- The portal desk reads only the VPS desk queue, DNA, stock, auctions, summary and activity using the portal session bearer token and no cookies; prices, stages, gaps and counters are server-supplied (never derived), and synthetic fallback is restricted to development and Lovable preview hosts to preserve tenant isolation and the read-only boundary.
+- Desk summary and incremental worker activity use an independent 60-second read-only hook with timestamp cursor, deduplicated newest-first events and auth-change resets, so polling cannot disturb existing desk panels or retain a previous account's events.
 - Desk valuations reuse wholesaleApi.guide without a second pricing client; desk-only result rendering and polling retain the guide's held and live-check send gates, and related cars reuse the desk queue card to keep figures and dealer isolation consistent.
 - Wholesale entry may initialize its fields from link parameters, but odometer confirmation stays false and the existing guide/send flow remains mandatory to prevent pre-fill from bypassing validation.

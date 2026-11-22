@@ -1,6 +1,8 @@
 # Roadmap
 
 ## Live dealer desk
+- [x] Add summary counters and 60-second Worker activity feed without changing existing panels; 51 tests and signed-in controlled polling, links, Sydney times and mobile placement verified; unpublished.
+- [ ] Confirm /summary and /activity live field names (waiting on redacted server responses; unauthenticated endpoints return 401).
 - [x] Add compact OogleVal using the existing guide call and polling, server-only figures and up to three shape queue cards; verified controlled signed-in flow and mobile; unpublished. Hosted VPS dealer access remains unverified.
 - [x] Add approved New car pre-fill from desk links only; verified fields, unchecked odometer and mandatory guide flow.
 - [x] Add read-only stock and closing-auction panels; verified 21 tests, signed-in controlled responses, drawer links, sorting, staff blanks and mobile layout; unpublished.

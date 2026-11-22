@@ -8,6 +8,8 @@ import { confidenceLabel, filterQueue, floorFigures, isAuction, safeAdUrl, type 
 import { useDeskFeed, type DeskPanel } from "./useDeskFeed";
 import { StockPanel, AuctionsPanel } from "./YardPanels";
 import { OogleVal } from "./OogleVal";
+import { SummaryStrip, WorkerActivity } from "./ActivityPanels";
+import { useDeskActivity } from "./useDeskActivity";
 
 const money = (n: number | null | undefined) => n == null ? "Price restricted" : new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(n);
 const distance = (n: number | null | undefined) => n == null ? "km unavailable" : `${n.toLocaleString("en-AU")} km`;
@@ -63,17 +65,20 @@ function DnaContent({ data }: { data: DeskDna }) {
 }
 export default function DeskPage() {
   const { queue, dna, stock, auctions } = useDeskFeed();
+  const { summary, activity, updatedAt, now } = useDeskActivity();
   const [channel, setChannel] = useState<"all" | "retail" | "auction">("all");
   const [today, setToday] = useState(false);
   const filtered = filterQueue(queue.data ?? [], channel, today);
   return <div className="min-h-screen bg-background text-foreground">
     <header className="border-b border-border"><div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-4 sm:px-6"><Link to="/portal/desk" aria-label="Carbitrage desk"><img src={logo} alt="Carbitrage" className="h-12 w-auto object-contain" /></Link><span className="text-sm font-medium text-muted-foreground">Your trading desk</span></div></header>
+    <SummaryStrip panel={summary} />
     <div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[140px_minmax(0,1fr)_minmax(280px,340px)]">
       <nav aria-label="Desk navigation" className="flex gap-2 lg:flex-col"><Button asChild variant="navActive"><Link to="/portal/desk"><LayoutDashboard />Desk</Link></Button><Button asChild variant="nav"><Link to="/listings">Live market<ArrowUpRight /></Link></Button></nav>
       <main className="min-w-0"><h1 className="text-2xl font-semibold">Next cars to buy</h1>
         <div className="my-5 flex flex-wrap items-center justify-between gap-3"><div className="flex gap-1" aria-label="Source filters">{([{ key: "all", label: "All" }, { key: "retail", label: "Retail" }, { key: "auction", label: "Auctions" }] as const).map((filter) => <Button key={filter.key} size="sm" variant={channel === filter.key ? "default" : "ghost"} aria-pressed={channel === filter.key} onClick={() => setChannel(filter.key)}>{filter.label}</Button>)}</div><label className="flex items-center gap-2 text-sm"><Checkbox checked={today} onCheckedChange={(value) => setToday(value === true)} />New today</label></div>
         {queue.example ? <ExampleBanner /> : null}
         {queue.loading || !queue.data ? <PanelStatus panel={queue} /> : filtered.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No cars in this view</p> : <ol className="space-y-4">{filtered.map((item) => <CarCard key={item.id} item={item} rank={(queue.data ?? []).indexOf(item) + 1} />)}</ol>}
+        <WorkerActivity panel={activity} updatedAt={updatedAt} now={now} />
       </main>
       <aside aria-label="Valuation and your DNA" className="min-w-0 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"><OogleVal renderCar={(item, rank) => <CarCard key={item.id} item={item} rank={rank} />} /><div className="pt-6"><h2 className="mb-4 text-xl font-semibold">Your DNA</h2>{dna.example ? <ExampleBanner /> : null}{dna.loading || !dna.data ? <PanelStatus panel={dna} /> : <DnaContent data={dna.data} />}</div></aside>
       <div className="min-w-0 space-y-8 lg:col-span-2 lg:col-start-2"><StockPanel panel={stock} /><AuctionsPanel panel={auctions} /></div>
