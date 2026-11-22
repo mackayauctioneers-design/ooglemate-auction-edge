@@ -165,6 +165,27 @@
   }
 }
 
+/* Public live market: scoped trading-desk tokens, leaving other pages unchanged. */
+.live-market {
+  --background: 150 10% 5%;
+  --foreground: 120 6% 96%;
+  --card: 150 7% 9%;
+  --card-foreground: 120 6% 96%;
+  --primary: 145 72% 62%;
+  --primary-foreground: 150 10% 5%;
+  --muted: 150 6% 16%;
+  --muted-foreground: 140 5% 64%;
+  --border: 150 6% 20%;
+  --input: 150 6% 20%;
+  --accent: 150 6% 16%;
+  --accent-foreground: 120 6% 96%;
+  --ring: 145 72% 62%;
+  --market-secondary: 190 45% 67%;
+  letter-spacing: 0;
+}
+
+.bg-market-secondary { background-color: hsl(var(--market-secondary)); }
+
 @layer components {
   /* Action badges */
   .badge-buy {

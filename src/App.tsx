@@ -28,6 +28,7 @@ import ValoPage from "./pages/ValoPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
 import FindCarsPage from "./pages/FindCarsPage";
 import WholesaleQueuePage from "./pages/WholesaleQueuePage";
+import ListingsPage from "./pages/ListingsPage";
 
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
@@ -176,6 +177,7 @@ const App = () => (
             <Routes>
               {/* === DEALER ROUTES === */}
               <Route path="/westside" element={<WestsidePage />} />
+              <Route path="/listings" element={<ListingsPage />} />
               <Route path="/" element={<Navigate to="/portal/login" replace />} />
               <Route path="/dealer-home" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />

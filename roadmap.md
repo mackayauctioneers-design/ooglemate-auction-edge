@@ -1,5 +1,8 @@
 # Roadmap
 
+## Public Live market page
+- [x] Add /listings, live statistics hook and main navigation link; verify live data, mobile layout and failure state.
+
 ## Agent Conduit (done, one item open)
 - [x] Tables: agent_registry, agent_watch_links, agent_heartbeats (RLS + grants)
 - [x] agent-checkin edge function (deployed)

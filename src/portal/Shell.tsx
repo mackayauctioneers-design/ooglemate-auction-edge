@@ -12,6 +12,7 @@ import { RoleRefusal, Wordmark } from "./wholesale/WholesaleSignIn";
 const WHOLESALE_LINKS = [
   { to: "/portal/wholesale/start", label: "New car" },
   { to: "/portal/wholesale/updates", label: "Updates" },
+  { to: "/listings", label: "Live market" },
 ];
 
 const LINKS = [
@@ -22,6 +23,7 @@ const LINKS = [
   { to: "/portal/insights", label: "Insights" },
   { to: "/portal/import", label: "Sales import" },
   { to: "/portal/connect", label: "Connect" },
+  { to: "/listings", label: "Live market" },
 ];
 
 export default function Shell() {
