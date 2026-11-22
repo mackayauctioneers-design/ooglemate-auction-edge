@@ -1,5 +1,9 @@
 # Roadmap
 
+## Live dealer desk
+- [x] Add read-only queue and DNA panels at /portal/desk; tested preview examples, filters, privacy rules and signed-in staff display with controlled responses.
+- [ ] Confirm live response field mapping with a redacted /queue and /dna response (waiting on API contract).
+
 ## Public Live market page
 - [x] Add /listings, live statistics hook and main navigation link; verify live data, mobile layout and failure state.
 

@@ -133,6 +133,7 @@ import WestsidePage from "./pages/WestsidePage";
 import PortalLoginPage from "./portal/LoginPage";
 import PortalShell from "./portal/Shell";
 import PortalFindsPage from "./portal/FindsPage";
+import PortalDeskPage from "./portal/desk/DeskPage";
 import PortalFindDetailPage from "./portal/FindDetailPage";
 import PortalDnaPage from "./portal/DnaPage";
 import PortalAlertsPage from "./portal/AlertsPage";
@@ -196,6 +197,7 @@ const App = () => (
               <Route path="/dealer/welcome" element={<RequireAuth><DealerWelcomePage /></RequireAuth>} />
               <Route path="/demo" element={<DemoDashboardPage />} />
               <Route path="/portal/login" element={<PortalLoginPage />} />
+              <Route path="/portal/desk" element={<PortalDeskPage />} />
               <Route path="/portal/buyer-view" element={<WholesaleBuyerPage />} />
               <Route path="/portal/buyer-prices" element={<BuyerPriceHistoryPage />} />
               <Route path="/portal/buyer-alerts" element={<BuyerMessagesPage />} />
