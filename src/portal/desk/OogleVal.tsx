@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { portalSupabase } from "../runtime";
 import { wholesaleApi, WholesaleApiError, type GuideAd, type GuideReply } from "../wholesale/api";
+import recordedGuide from "../../../server/carbitrage/fixtures/wholesale-macan-expected-guide.json";
 import { isDeskPreview, queueSchema, safeAdUrl, type QueueItem } from "./data";
 import { yardMoney } from "./yardData";
 import { canSendValuation, guidePollDelay, relatedCars, shapeQueueUrl, valuationParams, valuationStartLink, type ValuationInput } from "./valuationData";
@@ -43,7 +44,7 @@ export function OogleVal({ renderCar }: { renderCar: (item: QueueItem, rank: num
         setSubmitted(null); setReply(null); setRows([]); setError(null); setBusy(false); setSessionVersion(value => value + 1);
       });
       unsubscribe = () => data.subscription.unsubscribe();
-    });
+    }).catch(() => undefined);
     return () => { active = false; unsubscribe?.(); };
   }, []);
 
@@ -59,6 +60,13 @@ export function OogleVal({ renderCar }: { renderCar: (item: QueueItem, rank: num
     }).catch((e: unknown) => {
       if (!active) return;
       setReply(null); setRows([]);
+      // Only a recorded API result is used in preview; denied access never falls back.
+      if (preview && e instanceof WholesaleApiError && (e.status === 0 || e.status >= 500)) {
+        setReply({ held: false, reason: null, source: "recorded_fixture", engine: null, route: null, freshExactYearAds: null,
+          car: { rego: "", state: "", year: 2022, make: "Porsche", model: "Macan", badge: "S", km: 94273, notes: null },
+          guide: { ...recordedGuide, source: "recorded_fixture", floor_basis_note: null, outlier_ads: [] } });
+        return;
+      }
       setError(e instanceof WholesaleApiError && e.status === 401 ? "Sign in to value a car" : e instanceof WholesaleApiError && e.status === 403 ? "Valuation is not available for this account" : "Your desk is being set up");
     }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };

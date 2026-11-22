@@ -1,8 +1,8 @@
 # Roadmap
 
 ## Live dealer desk
-- [ ] Add compact OogleVal using the existing guide call and polling, server-only figures and up to three shape queue cards; verify and keep unpublished.
-- [ ] Wholesale pre-fill from desk: existing New car ignores link fields; waiting on permission for a minimal pre-fill change.
+- [x] Add compact OogleVal using the existing guide call and polling, server-only figures and up to three shape queue cards; verified controlled signed-in flow and mobile; unpublished. Hosted VPS dealer access remains unverified.
+- [x] Add approved New car pre-fill from desk links only; verified fields, unchecked odometer and mandatory guide flow.
 - [x] Add read-only stock and closing-auction panels; verified 21 tests, signed-in controlled responses, drawer links, sorting, staff blanks and mobile layout; unpublished.
 - [x] Align /stock and /auctions with confirmed response fields, server groups, cost gaps and nullable stock numbers; keep unpublished.
 - [x] Add read-only queue and DNA panels at /portal/desk; tested preview examples, filters, privacy rules and signed-in staff display with controlled responses.

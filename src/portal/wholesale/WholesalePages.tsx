@@ -4,6 +4,7 @@ import { km } from "../format";
 import { portalApi } from "../api";
 import { signOutEverywhere } from "./auth";
 import { RoleRefusal, Wordmark } from "./WholesaleSignIn";
+import { startPrefill } from "./startPrefill";
 import {
   useLoad,
   wholesaleApi,
@@ -253,7 +254,8 @@ function OwnAdFields({ link, asking, onLink, onAsking }: { link: string; asking:
 /** Live: no rego lookup is connected yet, so the dealer types the car. The odometer still has to be confirmed. */
 function ManualStart() {
   const navigate = useNavigate();
-  const [f, setF] = useState({ rego: "", year: "", make: "", model: "", badge: "", state: "", odo: "", adLink: "", asking: "" });
+  const [params] = useSearchParams();
+  const [f, setF] = useState(() => startPrefill(params));
   const [checked, setChecked] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
   const kmValue = Number(f.odo.replace(/[^0-9]/g, ""));
@@ -293,10 +295,12 @@ export function WholesaleStartPage() {
 
 function PreviewStart({ info }: { info: ReturnType<typeof useLoad<Info>> }) {
   const navigate = useNavigate();
-  const [rego, setRego] = useState("");
-  const [odo, setOdo] = useState("");
-  const [adLink, setAdLink] = useState("");
-  const [asking, setAsking] = useState("");
+  const [params] = useSearchParams();
+  const [initial] = useState(() => startPrefill(params));
+  const [rego, setRego] = useState(initial.rego);
+  const [odo, setOdo] = useState(initial.odo);
+  const [adLink, setAdLink] = useState(initial.adLink);
+  const [asking, setAsking] = useState(initial.asking);
   const [checked, setChecked] = useState(false);
   const [car, setCar] = useState<Awaited<ReturnType<typeof wholesaleApi.lookup>>["car"] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -310,7 +314,7 @@ function PreviewStart({ info }: { info: ReturnType<typeof useLoad<Info>> }) {
     if (rego.trim().length < 5) { setCar(null); return; }
     wholesaleApi.lookup(rego.trim()).then((r) => {
       if (!live) return;
-      setCar(r.car); setError(null); setOdo(new Intl.NumberFormat("en-AU").format(r.car.odometerKm ?? 0));
+      setCar(r.car); setError(null); setOdo(initial.odo && rego === initial.rego ? initial.odo : new Intl.NumberFormat("en-AU").format(r.car.odometerKm ?? 0));
     }).catch((e: unknown) => { if (live) { setCar(null); setError(e instanceof Error ? e.message : "Not found"); } });
     return () => { live = false; };
   }, [rego]);
