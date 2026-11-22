@@ -2,7 +2,7 @@
 
 ## Live dealer desk
 - [x] Add read-only stock and closing-auction panels; verified 21 tests, signed-in controlled responses, drawer links, sorting, staff blanks and mobile layout; unpublished.
-- [ ] Confirm /stock and /auctions response fields (waiting on redacted server responses).
+- [x] Align /stock and /auctions with confirmed response fields, server groups, cost gaps and nullable stock numbers; keep unpublished.
 - [x] Add read-only queue and DNA panels at /portal/desk; tested preview examples, filters, privacy rules and signed-in staff display with controlled responses.
 - [ ] Confirm live response field mapping with a redacted /queue and /dna response (waiting on API contract).
 

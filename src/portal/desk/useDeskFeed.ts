@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { portalSupabase } from "../runtime";
 import { DESK_BASE_URL, dnaSchema, exampleDesk, isDeskPreview, queueSchema, type DeskDna, type QueueItem } from "./data";
-import { auctionsSchema, stockSchema, exampleYard, type StockItem, type AuctionItem } from "./yardData";
+import { auctionsSchema, stockSchema, exampleYard, type StockItem, type AuctionFeed } from "./yardData";
 
 export type DeskPanel<T> = { loading: boolean; data: T | null; example: boolean };
 const empty = { loading: true, data: null, example: false };
@@ -10,7 +10,7 @@ export function useDeskFeed() {
   const [queue, setQueue] = useState<DeskPanel<QueueItem[]>>(empty);
   const [dna, setDna] = useState<DeskPanel<DeskDna>>(empty);
   const [stock, setStock] = useState<DeskPanel<StockItem[]>>(empty);
-  const [auctions, setAuctions] = useState<DeskPanel<AuctionItem[]>>(empty);
+  const [auctions, setAuctions] = useState<DeskPanel<AuctionFeed>>(empty);
   useEffect(() => {
     let active = true;
     let generation = 0;
