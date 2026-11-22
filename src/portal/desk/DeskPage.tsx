@@ -7,6 +7,7 @@ import logo from "@/assets/carbitrage-logo.jpg";
 import { confidenceLabel, filterQueue, floorFigures, isAuction, safeAdUrl, type DeskDna, type QueueItem } from "./data";
 import { useDeskFeed, type DeskPanel } from "./useDeskFeed";
 import { StockPanel, AuctionsPanel } from "./YardPanels";
+import { OogleVal } from "./OogleVal";
 
 const money = (n: number | null | undefined) => n == null ? "Price restricted" : new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(n);
 const distance = (n: number | null | undefined) => n == null ? "km unavailable" : `${n.toLocaleString("en-AU")} km`;
@@ -74,7 +75,7 @@ export default function DeskPage() {
         {queue.example ? <ExampleBanner /> : null}
         {queue.loading || !queue.data ? <PanelStatus panel={queue} /> : filtered.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No cars in this view</p> : <ol className="space-y-4">{filtered.map((item) => <CarCard key={item.id} item={item} rank={(queue.data ?? []).indexOf(item) + 1} />)}</ol>}
       </main>
-      <aside aria-label="Your DNA" className="min-w-0 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"><h2 className="mb-4 text-xl font-semibold">Your DNA</h2>{dna.example ? <ExampleBanner /> : null}{dna.loading || !dna.data ? <PanelStatus panel={dna} /> : <DnaContent data={dna.data} />}</aside>
+      <aside aria-label="Valuation and your DNA" className="min-w-0 border-t border-border pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"><OogleVal renderCar={(item, rank) => <CarCard key={item.id} item={item} rank={rank} />} /><div className="pt-6"><h2 className="mb-4 text-xl font-semibold">Your DNA</h2>{dna.example ? <ExampleBanner /> : null}{dna.loading || !dna.data ? <PanelStatus panel={dna} /> : <DnaContent data={dna.data} />}</div></aside>
       <div className="min-w-0 space-y-8 lg:col-span-2 lg:col-start-2"><StockPanel panel={stock} /><AuctionsPanel panel={auctions} /></div>
     </div>
   </div>;
