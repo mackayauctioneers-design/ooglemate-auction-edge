@@ -1,5 +1,8 @@
 # Roadmap
 
+## Valuation trim-check update
+- [ ] Pass through needs_trim_check, suggested_badge and message with null floor/buy fields; ask the dealer and retry with the corrected badge; update valuation descriptions and add a passthrough test. Blocked: value_car / quick_valuation and the Demo assistant source are absent from this checkout; awaiting their source/repository. Do not change figures, other tools or publish.
+
 ## Live dealer desk
 - [x] Add summary counters and 60-second Worker activity feed without changing existing panels; 51 tests and signed-in controlled polling, links, Sydney times and mobile placement verified; unpublished.
 - [ ] Confirm /summary and /activity live field names (waiting on redacted server responses; unauthenticated endpoints return 401).
