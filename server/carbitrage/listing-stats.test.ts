@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LISTING_STATS_REFRESH_MS, listingStatsSchema } from "./useListingStats.ts";
+import { LISTING_STATS_REFRESH_MS, listingStatsSchema } from "../../src/hooks/useListingStats.ts";
 
 test("public figures refresh every ten minutes", () => {
   assert.equal(LISTING_STATS_REFRESH_MS, 600000);
