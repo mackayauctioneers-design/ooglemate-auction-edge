@@ -50,15 +50,22 @@ export default function DealerBuyingPage() {
       const [s, o, h] = await Promise.all([
         supabase.from('vehicle_sales_truth').select('make, model, year, km, sale_price, days_to_clear, transmission').eq('account_id', dealerId).order('sold_at', { ascending: false }).limit(1000),
         supabase.from('operator_opportunities').select('*').in('status', ACTIVE).gte('created_at', fresh).order('created_at', { ascending: false }).limit(1000),
-        supabase.from('sale_hunts').select('id').eq('dealer_id', dealerId).limit(200),
+        supabase.from('dealer_profiles').select('id').eq('account_id', dealerId).limit(50),
       ]);
       if (!live) return;
       if (s.error || o.error) setError(true);
       setSales((s.data as SaleRow[]) ?? []);
       setOpps(o.data ?? []);
-      const ids = (h.data ?? []).map((r) => r.id);
+      // sale_hunts link to the dealer profile, not the account: account -> profiles -> hunts -> alerts
+      const profileIds = (h.data ?? []).map((r) => r.id);
+      let ids: string[] = [];
+      if (profileIds.length) {
+        const hunts = await supabase.from('sale_hunts').select('id').in('dealer_id', profileIds).limit(200);
+        ids = (hunts.data ?? []).map((r) => r.id);
+      }
+      if (!live) return;
       if (!ids.length) { setAlerts([]); return; }
-      const a = await supabase.from('hunt_alerts').select('id, alert_type, created_at, payload, acknowledged_at').in('hunt_id', ids).order('created_at', { ascending: false }).limit(10);
+      const a = await supabase.from('hunt_alerts').select('id, alert_type, created_at, payload, acknowledged_at').in('hunt_id', ids).order('created_at', { ascending: false }).limit(20);
       if (live) setAlerts(a.data ?? []);
     })();
     return () => { live = false; };
