@@ -2,10 +2,11 @@ import type { CarParams, GuideReply } from "../wholesale/api.ts";
 import { DESK_BASE_URL, type QueueItem } from "./data.ts";
 
 export type ValuationInput = { rego: string; state: string; year: string; make: string; model: string; badge: string; km: string };
-export function valuationParams(input: ValuationInput, mode: "rego" | "details"): (Partial<CarParams> & { km: number }) | null {
+export function valuationParams(input: ValuationInput, mode: "rego" | "details", requireDetailsState = true): (Partial<CarParams> & { km: number }) | null {
   const km = Number(input.km.replace(/,/g, ""));
-  if (!input.km.trim() || !Number.isFinite(km) || km < 0 || !input.state) return null;
-  if (mode === "rego") return input.rego.trim() ? { rego: input.rego.trim().toUpperCase(), state: input.state, km } : null;
+  if (!input.km.trim() || !Number.isFinite(km) || km < 0) return null;
+  if (mode === "rego") return input.rego.trim() && input.state ? { rego: input.rego.trim().toUpperCase(), state: input.state, km } : null;
+  if (requireDetailsState && !input.state) return null;
   if (!/^\d{4}$/.test(input.year) || !input.make.trim() || !input.model.trim() || !input.badge.trim()) return null;
   return { year: input.year, make: input.make.trim(), model: input.model.trim(), badge: input.badge.trim(), state: input.state, km };
 }

@@ -18,7 +18,7 @@ function Ad({ ad, floor = false }: { ad: GuideAd; floor?: boolean }) {
   return <div className="border-b border-border py-3 text-sm"><p className="break-words font-medium">{ad.title}</p><div className="mt-1 flex flex-wrap items-center justify-between gap-2"><span className="text-muted-foreground">{ad.km == null ? "" : `${ad.km.toLocaleString("en-AU")} km`}{ad.state ? ` · ${ad.state}` : ""}</span><span className={floor ? "text-lg font-semibold tabular-nums" : "font-semibold tabular-nums"}>{yardMoney(ad.price_ex_gov)}</span></div>{url ? <Button asChild variant="link" size="sm" className="mt-1 px-0"><a href={url} target="_blank" rel="noopener noreferrer">View ad<ArrowUpRight /></a></Button> : null}</div>;
 }
 
-export function OogleVal({ renderCar }: { renderCar: (item: QueueItem, rank: number) => ReactNode }) {
+export function OogleVal({ renderCar, requireDetailsState = true, allowExampleFallback = true }: { renderCar: (item: QueueItem, rank: number) => ReactNode; requireDetailsState?: boolean; allowExampleFallback?: boolean }) {
   const [mode, setMode] = useState<"rego" | "details">("rego");
   const [input, setInput] = useState<ValuationInput>({ rego: "", state: "", year: "", make: "", model: "", badge: "", km: "" });
   const [submitted, setSubmitted] = useState<ReturnType<typeof valuationParams>>(null);
@@ -31,7 +31,7 @@ export function OogleVal({ renderCar }: { renderCar: (item: QueueItem, rank: num
   const [more, setMore] = useState(false);
   const preview = isDeskPreview(window.location.hostname, import.meta.env.DEV);
   const example = reply?.source === "sample_fixture" || reply?.source === "recorded_fixture" || reply?.guide?.source === "sample_fixture" || reply?.guide?.source === "recorded_fixture";
-  const params = valuationParams(input, mode);
+  const params = valuationParams(input, mode, requireDetailsState);
   const set = (key: keyof ValuationInput, value: string) => { setInput(current => ({ ...current, [key]: value })); setSubmitted(null); setReply(null); setRows([]); setError(null); setBusy(false); };
 
   useEffect(() => {
@@ -61,16 +61,16 @@ export function OogleVal({ renderCar }: { renderCar: (item: QueueItem, rank: num
       if (!active) return;
       setReply(null); setRows([]);
       // Only a recorded API result is used in preview; denied access never falls back.
-      if (preview && e instanceof WholesaleApiError && (e.status === 0 || e.status >= 500)) {
+      if (allowExampleFallback && preview && e instanceof WholesaleApiError && (e.status === 0 || e.status >= 500)) {
         setReply({ held: false, reason: null, source: "recorded_fixture", engine: null, route: null, freshExactYearAds: null,
           car: { rego: "", state: "", year: 2022, make: "Porsche", model: "Macan", badge: "S", km: 94273, notes: null },
           guide: { ...recordedGuide, source: "recorded_fixture", floor_basis_note: null, outlier_ads: [] } });
         return;
       }
-      setError(e instanceof WholesaleApiError && e.status === 401 ? "Sign in to value a car" : e instanceof WholesaleApiError && e.status === 403 ? "Valuation is not available for this account" : "Your desk is being set up");
+      setError(e instanceof WholesaleApiError && e.status === 401 ? "Sign in to value a car" : e instanceof WholesaleApiError && e.status === 403 ? "Valuation is not available for this account" : allowExampleFallback ? "Your desk is being set up" : "Couldn't value this car. Please try again.");
     }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [submitted, tick, sessionVersion, preview]);
+  }, [submitted, tick, sessionVersion, preview, allowExampleFallback]);
 
   useEffect(() => {
     const delay = guidePollDelay(reply);
@@ -106,7 +106,7 @@ export function OogleVal({ renderCar }: { renderCar: (item: QueueItem, rank: num
     <form className="mt-4 space-y-3" onSubmit={event => { event.preventDefault(); if (!params || busy) return; setReply(null); setRows([]); setMore(false); setSubmitted(params); }}>
       <Tabs value={mode} onValueChange={value => { setMode(value === "details" ? "details" : "rego"); setSubmitted(null); setReply(null); setRows([]); setError(null); setBusy(false); }}><TabsList className="w-full"><TabsTrigger value="rego" className="flex-1">Rego</TabsTrigger><TabsTrigger value="details" className="flex-1">Car details</TabsTrigger></TabsList></Tabs>
       <div className="grid grid-cols-2 gap-3">{mode === "rego" ? field("rego", "Rego") : <>{field("year", "Year", true)}{field("make", "Make")}{field("model", "Model")}{field("badge", "Badge")}</>}
-        <div className="space-y-1.5"><Label htmlFor="oogleval-state" className="text-xs">State</Label><Select value={input.state} onValueChange={value => set("state", value)}><SelectTrigger id="oogleval-state"><SelectValue placeholder="State" /></SelectTrigger><SelectContent>{["NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT"].map(state => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent></Select></div>{field("km", "Km", true)}</div>
+        <div className="space-y-1.5"><Label htmlFor="oogleval-state" className="text-xs">{mode === "details" && !requireDetailsState ? "State (optional)" : "State"}</Label><Select value={input.state} onValueChange={value => set("state", value)}><SelectTrigger id="oogleval-state"><SelectValue placeholder="State" /></SelectTrigger><SelectContent>{["NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT"].map(state => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent></Select></div>{field("km", "Km", true)}</div>
       <Button type="submit" className="w-full" disabled={!params || busy}>{busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}Value</Button>
     </form>
     {error ? <p role="alert" className="mt-4 text-sm text-muted-foreground">{error}</p> : null}

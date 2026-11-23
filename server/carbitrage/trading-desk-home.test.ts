@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { deskHomeDestination } from '../../src/components/trading-desk/homeAccess.ts';
-import { counterTrend, decisionTier, findsByDay, findsBySource, returnedFloorGap, sydneyFoundTime } from '../../src/components/trading-desk/deskPresentation.ts';
+import { counterTrend, decisionTier, findsByDay, findsBySource, latestScanTime, marketTickerFigures, returnedFloorGap, sydneyFoundTime } from '../../src/components/trading-desk/deskPresentation.ts';
 
 const who = { signedIn: true, operatorRole: null as unknown, buyer: false, franchiseDealer: false };
 describe('Trading Desk home privacy', () => {
@@ -30,6 +30,17 @@ const rows = [
   { created_at: '2026-11-21T01:00:00Z', listing_source: 'carsales', tier: 'WATCH', status: 'new', is_starred: false },
 ];
 describe('Trading Desk presentation without invented data', () => {
+  it('uses the canonical market counts and wholesale total, not bid observations', () => {
+    assert.deepEqual(marketTickerFigures({ total_live_listings: 67086, retail_dealer_listings: 60863, auction_lots_open: 6223, added_last_24h: 2658, wholesale_price_points: { total: 2424 } }).map(figure => figure.value), [67086, 2658, 60863, 6223, 2424]);
+  });
+  it('drops inconsistent breakdowns rather than inventing corrected totals', () => {
+    const figures = marketTickerFigures({ total_live_listings: 67086, retail_dealer_listings: 68863, auction_lots_open: 6223, added_last_24h: 2658, wholesale_price_points: { total: 2424 } });
+    assert.deepEqual(figures.map(figure => figure.value), [67086, 2658, 2424]);
+  });
+  it('uses only an explicit scan timestamp, never the find or refresh time', () => {
+    assert.equal(latestScanTime(rows), null);
+    assert.equal(latestScanTime([{ last_scan_at: 'invalid' }, { last_scan_at: '2026-11-23T01:00:00Z' }, { last_scan_at: '2026-11-23T02:00:00Z' }]), '2026-11-23T02:00:00Z');
+  });
   it('hides empty charts instead of inventing finds', () => { assert.deepEqual(findsByDay([], now), []); assert.deepEqual(findsBySource([]), []); });
   it('groups exactly seven days by Sydney date, not UTC', () => {
     const days = findsByDay(rows, now);

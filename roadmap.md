@@ -1,5 +1,8 @@
 # Roadmap
 
+## Trading Desk fix-only pass
+- [x] Correct canonical ticker consistency, wrap all ten mobile counters, reuse the shared guide with rego/state/km or details/km and clear failures, hide empty charts and remove duplicate scanning status. Verified 70 tests, build OK, signed-in operator root, controlled guide results/errors, buyer isolation and 320/390/768px counters; unpublished. Real guide call failed in this draft and now displays an error rather than substituted figures; live guide success remains unverified.
+
 ## Trading Desk home tune-up
 - [x] Restore the owner/operator root desk using existing verified roles; preserve wholesale-buyer destinations and signed-out sign-in.
 - [x] Tidy counters, add public live ticker, reuse OogleVal, and show charts only from loaded finds; tighten opportunity rows without pricing changes. Existing opportunity feed lacks floor gaps and scan timestamps, so these remain unavailable rather than fabricated.

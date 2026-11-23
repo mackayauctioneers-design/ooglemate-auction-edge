@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send, TrendingUp, TrendingDown, Minus, Radio } from 'lucide-react';
 import { MarketTicker, DeskCharts, DeskValuation } from '@/components/trading-desk/DeskOverview';
-import { counterTrend, decisionTier, returnedFloorGap, sourceName, sydneyFoundTime } from '@/components/trading-desk/deskPresentation';
+import { counterTrend, decisionTier, latestScanTime, returnedFloorGap, sourceName, sydneyFoundTime } from '@/components/trading-desk/deskPresentation';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
 import { HuntForThisDialog } from '@/components/trading-desk/HuntForThisDialog';
 import { DealerSoulDealsStrip } from '@/components/dealersoul/DealerSoulLive';
@@ -67,6 +67,7 @@ interface OperatorOpportunity {
   recommended_dealer_reason: string | null;
   floor_gap?: number | null;
   floor_gap_pct?: number | null;
+  last_scan_at?: string | null;
 }
 
 const laneColors: Record<string, string> = {
@@ -636,6 +637,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const newCount = baseFiltered.filter(o => ACTIONABLE_STATUSES.includes(o.status) && new Date(o.created_at).getTime() >= freshCutoff).length;
   const totalActionableCount = opportunities.filter(o => ACTIONABLE_STATUSES.includes(o.status)).length;
   const filtersAreRestrictingResults = sorted.length === 0 && totalActionableCount > 0;
+  const latestScan = latestScanTime(baseFiltered);
 
   // ─── Daily Signal Strip (deterministic, no AI) ──────────────────────────────
   const signalStrip = (() => {
@@ -742,7 +744,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         <MarketTicker now={nowTick} />
 
         {/* Daily Signal Strip */}
-        {!loading && (
+        {!loading && signalStrip.type === 'strong' && (
           <div className={`rounded-lg border px-4 py-2.5 text-sm font-medium flex items-center gap-2 ${
             signalStrip.type === 'strong'
               ? 'border-primary/30 bg-primary/5 text-foreground'
@@ -750,7 +752,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
           }`}>
             <Radio className="h-4 w-4 shrink-0 text-desk-positive" />
             <span>
-              {signalStrip.type === 'empty' ? 'Scanning the market…' : signalStrip.text}
+              {signalStrip.text}
               {signalStrip.type === 'strong' && signalStrip.detail && (
                 <>
                   {' '}
@@ -767,7 +769,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         {isDealerMode && <DealerSoulDealsStrip limit={20} />}
 
         {/* KPI Strip - Clickable Tier Buttons */}
-        <div className="overflow-x-auto border-y border-border" aria-label="Opportunity counters"><div className={`grid min-w-[940px] divide-x divide-border ${isDealerMode ? 'grid-cols-9' : 'grid-cols-10'}`}>
+        <div className="border-y border-border" aria-label="Opportunity counters"><div className={`grid min-w-0 grid-cols-2 divide-x divide-border sm:grid-cols-5 ${isDealerMode ? 'xl:grid-cols-9' : 'xl:grid-cols-10'}`}>
           {!isDealerMode && <CaroogleAIFindsDrawer compact />}
           {[
             { tier: 'NEW_24H', count: newCount, label: 'New 24h', className: 'text-desk-information' },
@@ -818,10 +820,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
           })}
         </div></div>
 
-        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0"><DeskCharts rows={baseFiltered} now={nowTick} /></div>
-          <DeskValuation />
-        </div>
+        <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-4">
+            <DeskCharts rows={baseFiltered} now={nowTick} />
 
 
         {/* Filters */}
@@ -933,16 +934,8 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : sorted.length === 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border bg-muted/30 px-4 py-5">
-            <div className="space-y-2">
-              <p className="flex items-center gap-2 text-sm font-medium"><Radio className="h-4 w-4 text-desk-positive" />Scanning the market…</p>
-              <p className="text-muted-foreground">
-                {filtersAreRestrictingResults
-                  ? 'No opportunities match the current filters.'
-                  : 'New opportunities will appear here.'}
-              </p>
-              <p className="text-xs text-muted-foreground">Latest scan time unavailable{lastUpdated ? ` · Desk refreshed ${sydneyFoundTime(lastUpdated.toISOString())}` : ''}</p>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border px-3 py-2">
+              <p role="status" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Radio className="h-3.5 w-3.5 text-desk-positive" />{filtersAreRestrictingResults ? 'No opportunities match the current filters.' : 'Scanning the market…'}{latestScan ? <span>· Latest scan {sydneyFoundTime(latestScan)}</span> : null}</p>
               <div className="flex justify-center gap-2">
                 {filtersAreRestrictingResults && (
                   <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
@@ -1261,6 +1254,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
             </div>
           </div>
         )}
+          </div>
+          <DeskValuation />
+        </div>
       </div>
     </Layout>
   );
