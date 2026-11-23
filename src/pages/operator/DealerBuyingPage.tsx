@@ -64,6 +64,7 @@ export default function DealerBuyingPage() {
     return () => { live = false; };
   }, [dealerId]);
 
+  const noDealer = dealers != null && !dealerId;
   const summary = useMemo(() => summariseSales(sales ?? []), [sales]);
   const matches = useMemo(() => matchingCars(opps ?? [], summary), [opps, summary]);
 
@@ -84,7 +85,7 @@ export default function DealerBuyingPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">What they sell</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
-                {sales == null ? <Quiet>Loading sales history…</Quiet> : !summary.count ? <Quiet>No sales history for this dealer yet.</Quiet> : <>
+                {noDealer ? <Quiet>No dealers with sales history yet.</Quiet> : sales == null ? <Quiet>Loading sales history…</Quiet> : !summary.count ? <Quiet>No sales history for this dealer yet.</Quiet> : <>
                   <div className="flex flex-wrap gap-1.5">{summary.topMakes.map((m) => <Badge key={m.make} variant="secondary">{m.make} · {m.count}</Badge>)}</div>
                   <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <div><dt className="text-xs text-muted-foreground">Sales</dt><dd className="font-mono">{summary.count}</dd></div>
@@ -102,7 +103,7 @@ export default function DealerBuyingPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Matching cars{opps && summary.count ? <span className="ml-2 text-xs font-normal text-muted-foreground">{matches.length}</span> : null}</CardTitle></CardHeader>
               <CardContent className="overflow-x-auto">
-                {opps == null || sales == null ? <Quiet>Loading live cars…</Quiet> : !summary.count ? <Quiet>No sales history for this dealer yet, so there's nothing to match against.</Quiet> : !matches.length ? <Quiet>No live cars match right now.</Quiet> :
+                {noDealer ? <Quiet>No dealer selected, so there's nothing to match.</Quiet> : opps == null || sales == null ? <Quiet>Loading live cars…</Quiet> : !summary.count ? <Quiet>No sales history for this dealer yet, so there's nothing to match against.</Quiet> : !matches.length ? <Quiet>No live cars match right now.</Quiet> :
                   <Table><TableHeader><TableRow><TableHead>Car</TableHead><TableHead>Km</TableHead><TableHead>Source</TableHead><TableHead className="text-right">Asking</TableHead><TableHead className="text-right">Floor</TableHead><TableHead className="text-right">Cautious buy</TableHead><TableHead className="text-right">Gap</TableHead><TableHead>Found</TableHead><TableHead /></TableRow></TableHeader>
                     <TableBody>{matches.map((o) => { const url = safeUrl(o.source_url); const floor = returnedFloorGap(o); return (
                       <TableRow key={o.id}>
@@ -122,7 +123,7 @@ export default function DealerBuyingPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Recent alerts</CardTitle></CardHeader>
               <CardContent>
-                {alerts == null ? <Quiet>Loading alerts…</Quiet> : !alerts.length ? <Quiet>No alerts for this dealer yet.</Quiet> :
+                {noDealer ? <Quiet>No alerts to show.</Quiet> : alerts == null ? <Quiet>Loading alerts…</Quiet> : !alerts.length ? <Quiet>No alerts for this dealer yet.</Quiet> :
                   <ul className="divide-y divide-border text-sm">{alerts.map((a) => { const p = a.payload ?? {}; const url = safeUrl(p.listing_url ?? p.url); return (
                     <li key={a.id} className="flex items-center justify-between gap-3 py-2">
                       <span className="min-w-0 truncate">{[p.year, p.make, p.model, p.variant].filter(Boolean).join(' ') || 'Matched car'}</span>
