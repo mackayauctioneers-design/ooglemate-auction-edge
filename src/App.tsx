@@ -113,6 +113,7 @@ import AuctionEnrichmentQueuePage from "./pages/operator/AuctionEnrichmentQueueP
 import HuntAlertsPage from "./pages/HuntAlertsPage";
 import DealerOogleBotPage from "./pages/DealerOogleBotPage";
 import AlertsMatchesPage from "./pages/operator/AlertsMatchesPage";
+import DealerBuyingPage from "./pages/operator/DealerBuyingPage";
 import PipelineHealthPage from "./pages/operator/PipelineHealthPage";
 import BuyIntelligencePage from "./pages/operator/BuyIntelligencePage";
 import DataSourcesPage from "./pages/operator/DataSourcesPage";
@@ -299,6 +300,7 @@ const App = () => (
               <Route path="/wholesale-queue" element={<RequireAuth><WholesaleQueuePage /></RequireAuth>} />
               <Route path="/operator/manual-intake" element={<OperatorGuard><ManualIntakePage /></OperatorGuard>} />
               <Route path="/operator/ooglebot" element={<OperatorGuard><OogleBotPage /></OperatorGuard>} />
+              <Route path="/operator/dealer-buying" element={<OperatorGuard><DealerBuyingPage /></OperatorGuard>} />
               <Route path="/operator/alerts-matches" element={<OperatorGuard><AlertsMatchesPage /></OperatorGuard>} />
               <Route path="/operator/pipeline" element={<OperatorGuard><PipelineHealthPage /></OperatorGuard>} />
               <Route path="/operator/buy-intelligence" element={<OperatorGuard><BuyIntelligencePage /></OperatorGuard>} />

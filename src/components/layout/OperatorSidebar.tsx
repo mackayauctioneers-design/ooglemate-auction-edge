@@ -47,6 +47,7 @@ interface NavItem {
 // Flat day-to-day list, in operator workflow order.
 const operatorItems: NavItem[] = [
   { path: '/', label: 'Trading Desk', icon: DollarSign },
+  { path: '/operator/dealer-buying', label: 'Dealer Buying', icon: Users },
   { path: '/operator/alerts-matches', label: 'Alerts & Matches', icon: Bell },
   { path: '/operator/car-sales-watch', label: 'Car Sales Watch', icon: TrendingDown },
   { path: '/operator/buy-intelligence', label: 'Buy Intelligence', icon: Trophy },
