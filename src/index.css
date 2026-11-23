@@ -6,12 +6,15 @@
    Clean white & black trading platform aesthetic
    All colors in HSL format */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
     /* Pure white and black theme */
     --background: 0 0% 100%;
+    --desk-positive: 157 72% 29%;
+    --desk-caution: 38 85% 33%;
+    --desk-information: 202 78% 36%;
+    --desk-urgent: 0 72% 44%;
     --foreground: 0 0% 4%;
 
     --card: 0 0% 98%;
@@ -79,6 +82,10 @@
   }
 
   .dark {
+    --desk-positive: 157 62% 58%;
+    --desk-caution: 38 85% 65%;
+    --desk-information: 202 78% 67%;
+    --desk-urgent: 0 72% 69%;
     /* Dark mode - inverted */
     --background: 0 0% 4%;
     --foreground: 0 0% 98%;
@@ -164,6 +171,14 @@
     @apply bg-muted-foreground/50;
   }
 }
+
+.trading-desk-tuned { letter-spacing: 0; }
+.trading-desk-tuned table td { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.trading-desk-tuned .desk-valuation h2 { font-size: 1rem; }
+.trading-desk-tuned .desk-valuation form { margin-top: 0.75rem; }
+.trading-desk-tuned .desk-valuation input,
+.trading-desk-tuned .desk-valuation [role="combobox"] { height: 2rem; }
+.trading-desk-tuned .desk-valuation section { padding-bottom: 1rem; }
 
 /* Public live market: scoped trading-desk tokens, leaving other pages unchanged. */
 .live-market {

@@ -9,6 +9,7 @@ import { BobContextProvider } from "@/contexts/BobContext";
 import { OperatorGuard } from "@/components/guards/OperatorGuard";
 import { RequireAdmin } from "@/components/guards/RequireAdmin";
 import { RequireAuth } from "@/components/guards/RequireAuth";
+import TradingDeskHome from "@/components/trading-desk/TradingDeskHome";
 
 // Dealer pages
 import TradingDeskPage from "./pages/DealerTradingDeskPage";
@@ -179,7 +180,7 @@ const App = () => (
               {/* === DEALER ROUTES === */}
               <Route path="/westside" element={<WestsidePage />} />
               <Route path="/listings" element={<ListingsPage />} />
-              <Route path="/" element={<Navigate to="/portal/login" replace />} />
+              <Route path="/" element={<TradingDeskHome />} />
               <Route path="/dealer-home" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />

@@ -73,7 +73,7 @@ const operatorSections: NavSection[] = [
       { path: '/josh-desk', label: 'Josh Deal Desk', icon: Tag },
       { path: '/operator/demand-desk', label: 'Demand Desk', icon: Car },
       { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
-      { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
+      { path: '/', label: 'Trading Desk', icon: DollarSign },
       { path: '/operator/car-sales-watch', label: 'Car Sales Watch', icon: TrendingDown },
       { path: '/today', label: 'Today', icon: Calendar },
       { path: '/dealer-dashboard', label: 'Dealer Dashboard', icon: BarChart3 },
@@ -177,7 +177,7 @@ export function OperatorSidebar() {
             )}
           >
             <Home className="h-4 w-4" />
-            {!collapsed && <span>Dealer View</span>}
+            {!collapsed && <span>Trading Desk home</span>}
           </Button>
         </Link>
       </div>
@@ -193,7 +193,7 @@ export function OperatorSidebar() {
             )}
             <div className="space-y-1">
               {section.items.map((item) => {
-                const isActive = location.pathname === item.path;
+                const isActive = location.pathname === item.path || (item.path === '/' && location.pathname === '/operator/trading-desk');
                 return (
                   <Link key={item.path} to={item.path}>
                     <Button

@@ -60,10 +60,11 @@ const flagLabels: Record<string, string> = {
   FAST_MOVER: 'Fast Mover',
 };
 
-export function CaroogleAIFindsDrawer() {
+export function CaroogleAIFindsDrawer({ compact = false }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [finds, setFinds] = useState<CaroogleFind[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [viewFilter, setViewFilter] = useState<'active' | 'starred'>('active');
   const [sortBy, setSortBy] = useState<string>('score');
@@ -80,6 +81,7 @@ export function CaroogleAIFindsDrawer() {
         .limit(100);
       if (error) throw error;
       setFinds((data as CaroogleFind[]) || []);
+      setLoaded(true);
     } catch (err) {
       console.error('Failed to load finds:', err);
     } finally {
@@ -88,8 +90,8 @@ export function CaroogleAIFindsDrawer() {
   }, []);
 
   useEffect(() => {
-    if (open) fetchFinds();
-  }, [open, fetchFinds]);
+    if (open || compact) fetchFinds();
+  }, [open, compact, fetchFinds]);
 
   const runScanner = async () => {
     setScanning(true);
@@ -140,17 +142,17 @@ export function CaroogleAIFindsDrawer() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <button className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-medium transition-all border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 ${finds.length > 0 ? 'ring-2 ring-offset-1 ring-amber-500 shadow-md scale-105' : 'opacity-80 hover:opacity-100'}`}>
-          <Sparkles className="h-4 w-4" />
-          <span className="text-xl font-bold">{finds.length}</span>
-          <span className="text-[11px] uppercase tracking-wide">AI FINDS</span>
-          {starredCount > 0 && (
+        <Button variant="outline" className={compact ? 'h-[76px] w-full min-w-0 flex-col items-start justify-center gap-1.5 rounded-none border-0 px-3 text-foreground hover:bg-muted' : 'h-auto gap-2 px-4 py-2.5'}>
+          {!compact && <Sparkles className="h-4 w-4" />}
+          <span className="flex w-full items-center justify-between text-xl font-semibold tabular-nums">{compact && !loaded ? '—' : finds.length}{compact && <Sparkles className="h-3.5 w-3.5 text-desk-caution" />}</span>
+          <span className="text-[10px] font-medium">AI Finds</span>
+          {!compact && starredCount > 0 && (
             <span className="flex items-center gap-0.5 text-[11px] ml-1">
               <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
               {starredCount}
             </span>
           )}
-        </button>
+        </Button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader className="pb-4">

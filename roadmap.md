@@ -1,5 +1,10 @@
 # Roadmap
 
+## Trading Desk home tune-up
+- [x] Restore the owner/operator root desk using existing verified roles; preserve wholesale-buyer destinations and signed-out sign-in.
+- [x] Tidy counters, add public live ticker, reuse OogleVal, and show charts only from loaded finds; tighten opportunity rows without pricing changes. Existing opportunity feed lacks floor gaps and scan timestamps, so these remain unavailable rather than fabricated.
+- [x] Verify 69 tests, real draft operator root access, controlled buyer/valuation flows, and desktop/mobile preview; keep unpublished. Hosted owner sign-in and live guide access remain unverified; sign-in screens and destinations outside root are unchanged as requested.
+
 ## Live dealer desk
 - [x] Add summary counters and 60-second Worker activity feed without changing existing panels; 51 tests and signed-in controlled polling, links, Sydney times and mobile placement verified; unpublished.
 - [ ] Confirm /summary and /activity live field names (waiting on redacted server responses; unauthenticated endpoints return 401).

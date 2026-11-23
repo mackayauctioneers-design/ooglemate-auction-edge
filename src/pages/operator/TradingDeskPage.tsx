@@ -11,7 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send } from 'lucide-react';
+import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send, TrendingUp, TrendingDown, Minus, Radio } from 'lucide-react';
+import { MarketTicker, DeskCharts, DeskValuation } from '@/components/trading-desk/DeskOverview';
+import { counterTrend, decisionTier, returnedFloorGap, sourceName, sydneyFoundTime } from '@/components/trading-desk/deskPresentation';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
 import { HuntForThisDialog } from '@/components/trading-desk/HuntForThisDialog';
 import { DealerSoulDealsStrip } from '@/components/dealersoul/DealerSoulLive';
@@ -63,6 +65,8 @@ interface OperatorOpportunity {
   strategic_fit_reason: string | null;
   match_lane: string | null;
   recommended_dealer_reason: string | null;
+  floor_gap?: number | null;
+  floor_gap_pct?: number | null;
 }
 
 const laneColors: Record<string, string> = {
@@ -83,12 +87,12 @@ const ACTIONABLE_STATUSES = ['new', 'assigned', 'reviewed'];
 
 const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, RETAIL_BUY: 3, RETAIL_TARGET: 4, AUCTION_WATCH: 5, WATCH: 6 };
 const tierColors: Record<string, string> = {
-  CODE_RED: 'bg-red-600 text-white',
+  CODE_RED: 'bg-desk-urgent text-primary-foreground',
   HIGH: 'bg-primary text-primary-foreground',
   BUY: 'bg-accent text-accent-foreground',
-  RETAIL_BUY: 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30',
-  RETAIL_TARGET: 'bg-amber-500/15 text-amber-700 border border-amber-500/30',
-  AUCTION_WATCH: 'bg-violet-500/15 text-violet-700 border border-violet-500/30',
+  RETAIL_BUY: 'bg-desk-positive/10 text-desk-positive border border-desk-positive/30',
+  RETAIL_TARGET: 'bg-desk-caution/10 text-desk-caution border border-desk-caution/30',
+  AUCTION_WATCH: 'bg-desk-information/10 text-desk-information border border-desk-information/30',
   WATCH: 'bg-muted text-muted-foreground',
 };
 
@@ -688,14 +692,14 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   })();
 
   return (
-    <Layout>
-      <div className="p-4 md:p-6 space-y-5 max-w-[1600px] mx-auto">
+    <Layout {...(!isDealerMode ? { desk: true } : {})}>
+      <div className="trading-desk-tuned min-w-0 p-4 md:p-6 space-y-4 max-w-[1800px] mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pl-12 lg:pl-0">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Trading Desk</h1>
             <p className="text-muted-foreground text-sm">
-              {isDealerMode ? 'Ranked buy opportunities backed by your sales DNA' : 'Centralised multi-dealer opportunity board'}
+              {isDealerMode ? 'Ranked buy opportunities backed by your sales DNA' : 'Market intelligence · valuations · buying'}
             </p>
           </div>
           <div className="flex flex-col sm:items-end gap-2">
@@ -708,12 +712,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                 </span>
               </span>
               <span className="opacity-50">·</span>
-              <span>
-                Next auto-scan in{' '}
-                <span className="text-foreground font-medium">
-                  {Math.max(1, Math.round((nextScanAt.getTime() - nowTick) / 60000))}m
-                </span>
-              </span>
+              <span>Sydney time</span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -740,6 +739,8 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
 
         </div>
 
+        <MarketTicker now={nowTick} />
+
         {/* Daily Signal Strip */}
         {!loading && (
           <div className={`rounded-lg border px-4 py-2.5 text-sm font-medium flex items-center gap-2 ${
@@ -747,13 +748,13 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               ? 'border-primary/30 bg-primary/5 text-foreground'
               : 'border-border bg-muted/30 text-muted-foreground'
           }`}>
-            <span>{signalStrip.type === 'strong' ? '🔥' : '—'}</span>
+            <Radio className="h-4 w-4 shrink-0 text-desk-positive" />
             <span>
-              {signalStrip.text}
+              {signalStrip.type === 'empty' ? 'Scanning the market…' : signalStrip.text}
               {signalStrip.type === 'strong' && signalStrip.detail && (
                 <>
                   {' '}
-                  <span className={signalStrip.isUrgent ? 'text-red-600 dark:text-red-400 font-bold' : 'font-semibold'}>
+                  <span className={signalStrip.isUrgent ? 'text-desk-urgent font-bold' : 'font-semibold'}>
                     {signalStrip.detail}
                   </span>
                 </>
@@ -766,26 +767,29 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         {isDealerMode && <DealerSoulDealsStrip limit={20} />}
 
         {/* KPI Strip - Clickable Tier Buttons */}
-        <div className="flex flex-wrap gap-2 items-center">
-          {!isDealerMode && <CaroogleAIFindsDrawer />}
+        <div className="overflow-x-auto border-y border-border" aria-label="Opportunity counters"><div className={`grid min-w-[940px] divide-x divide-border ${isDealerMode ? 'grid-cols-9' : 'grid-cols-10'}`}>
+          {!isDealerMode && <CaroogleAIFindsDrawer compact />}
           {[
-            { tier: 'NEW_24H', count: newCount, label: 'NEW · 24H', className: 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600', icon: <Clock className="h-4 w-4" /> },
-            { tier: 'CODE_RED', count: codeRedCount, label: 'CODE RED', className: 'border-red-500/40 bg-red-600/15 hover:bg-red-600/25 text-red-600' },
-            { tier: 'HIGH', count: highCount, label: 'HIGH', className: 'border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary' },
-            { tier: 'BUY', count: buyCount, label: 'BUY', className: 'border-accent/30 bg-accent/5 hover:bg-accent/15 text-accent-foreground' },
-            { tier: 'RETAIL_BUY', count: retailBuyCount, label: 'RETAIL BUY', className: 'border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/15 text-emerald-600' },
-            { tier: 'RETAIL_TARGET', count: retailTargetCount, label: 'RETAIL TARGET', className: 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/15 text-amber-600' },
-            { tier: 'AUCTION', count: auctionCount, label: 'AUCTION', className: 'border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/15 text-violet-600', icon: <CalendarDays className="h-4 w-4" /> },
-            { tier: 'starred', count: starredCount, label: 'STARRED', className: 'border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/15 text-amber-500', icon: <Star className="h-4 w-4 fill-amber-400 text-amber-400" /> },
-            { tier: 'WATCH', count: watchCount, label: 'WATCH', className: 'border-border bg-muted/30 hover:bg-muted/60 text-muted-foreground' },
-          ].map(({ tier, count, label, className, icon }) => {
+            { tier: 'NEW_24H', count: newCount, label: 'New 24h', className: 'text-desk-information' },
+            { tier: 'CODE_RED', count: codeRedCount, label: 'Code Red', className: 'text-desk-urgent' },
+            { tier: 'HIGH', count: highCount, label: 'High', className: 'text-foreground' },
+            { tier: 'BUY', count: buyCount, label: 'Buy', className: 'text-desk-positive' },
+            { tier: 'RETAIL_BUY', count: retailBuyCount, label: 'Retail Buy', className: 'text-desk-positive' },
+            { tier: 'RETAIL_TARGET', count: retailTargetCount, label: 'Retail Target', className: 'text-desk-caution' },
+            { tier: 'AUCTION', count: auctionCount, label: 'Auction', className: 'text-desk-information' },
+            { tier: 'starred', count: starredCount, label: 'Starred', className: 'text-desk-caution' },
+            { tier: 'WATCH', count: watchCount, label: 'Watch', className: 'text-muted-foreground' },
+          ].map(({ tier, count, label, className }) => {
+            const trend = tier === 'AUCTION' ? null : counterTrend(baseFiltered, tier, new Date(nowTick));
             const isActive = tier === 'starred' ? filterStatus === 'starred' :
               tier === 'AUCTION' ? filterSource === 'auction' :
               tier === 'NEW_24H' ? filterFresh === '24h' :
               filterTier === tier;
             return (
-              <button
+              <Button
+                variant="ghost"
                 key={tier}
+                aria-pressed={isActive}
                 onClick={() => {
                   if (tier === 'starred') {
                     setFilterStatus(filterStatus === 'starred' ? 'active' : 'starred');
@@ -805,19 +809,23 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                     setFilterStatus('active');
                   }
                 }}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-medium transition-all ${className} ${isActive ? 'ring-2 ring-offset-1 ring-current shadow-md scale-105' : 'opacity-80 hover:opacity-100'}`}
+                className={`h-[76px] min-w-0 flex-col items-start justify-center gap-1.5 rounded-none px-3 ${className} ${isActive ? 'bg-muted ring-1 ring-inset ring-border' : ''}`}
               >
-                {icon}
-                <span className="text-xl font-bold">{count}</span>
-                <span className="text-[11px] uppercase tracking-wide">{label}</span>
-              </button>
+                <span className="flex w-full items-center justify-between gap-1"><span className="text-xl font-semibold tabular-nums">{loading ? '—' : count}</span>{trend && !loading ? <span title={`Finds in the last 24h versus the previous 24h: ${trend}`}>{trend === 'up' ? <TrendingUp className="h-3.5 w-3.5" /> : trend === 'down' ? <TrendingDown className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}</span> : null}</span>
+                <span className="text-[10px] font-medium text-muted-foreground">{label}</span>
+              </Button>
             );
           })}
+        </div></div>
+
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0"><DeskCharts rows={baseFiltered} now={nowTick} /></div>
+          <DeskValuation />
         </div>
 
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2 items-end">
+        <div className="flex flex-wrap gap-2 items-end border-b border-border pb-4">
           {!isDealerMode && (
             <div className="w-40">
               <label className="text-xs text-muted-foreground mb-1 block">Account</label>
@@ -871,10 +879,10 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               </SelectContent>
             </Select>
           </div>
-          <div className="w-48">
+          {!isDealerMode && <div className="w-48">
             <label className="text-xs text-muted-foreground mb-1 block">Search Dealer</label>
             <Input value={filterDealerSearch} onChange={e => setFilterDealerSearch(e.target.value)} placeholder="Type dealer name…" />
-          </div>
+          </div>}
           <div className="w-36">
             <label className="text-xs text-muted-foreground mb-1 block">Max KM</label>
             <Select value={filterKmMax} onValueChange={setFilterKmMax}>
@@ -918,22 +926,23 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         )}
 
         <p className="text-sm text-muted-foreground">
-          {sorted.length} opportunities{filtersAreRestrictingResults ? ` · ${totalActionableCount} live in backend` : ''}
+          {sorted.length} opportunities{filtersAreRestrictingResults ? ` · ${totalActionableCount} across all filters` : ''}
         </p>
 
         {/* Table */}
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : sorted.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border bg-muted/30 px-4 py-5">
+            <div className="space-y-2">
+              <p className="flex items-center gap-2 text-sm font-medium"><Radio className="h-4 w-4 text-desk-positive" />Scanning the market…</p>
               <p className="text-muted-foreground">
                 {filtersAreRestrictingResults
                   ? 'No opportunities match the current filters.'
-                  : isDealerMode
-                    ? "Nothing matching your fingerprints right now. Tell Arby what you're chasing and we'll go find it."
-                    : 'No opportunities yet. Hit "Run Scoring" to populate.'}
+                  : 'New opportunities will appear here.'}
               </p>
+              <p className="text-xs text-muted-foreground">Latest scan time unavailable{lastUpdated ? ` · Desk refreshed ${sydneyFoundTime(lastUpdated.toISOString())}` : ''}</p>
+            </div>
               <div className="flex justify-center gap-2">
                 {filtersAreRestrictingResults && (
                   <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
@@ -942,8 +951,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                   <HuntForThisDialog accountId={lockedAccountId} />
                 )}
               </div>
-            </CardContent>
-          </Card>
+          </div>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
@@ -957,9 +965,10 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                     <TableHead className="w-[76px] text-right cursor-pointer px-2" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
                     <TableHead className="w-[110px] px-2">Best Fit</TableHead>
                     <TableHead className="w-[85px] text-right cursor-pointer px-2" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
+                    <TableHead className="w-[90px] text-right px-2">Gap to floor</TableHead>
                     <TableHead className="w-[90px] text-right px-2">Mkt Median</TableHead>
                     <TableHead className="w-[90px] cursor-pointer px-2" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
-                    <TableHead className="w-[80px] px-2">Source</TableHead>
+                    <TableHead className="w-[130px] px-2">Source · found (Sydney)</TableHead>
                     <TableHead className="w-[46px] text-right cursor-pointer px-1" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
                     <TableHead className="w-[42px] text-right px-1">KM</TableHead>
                     <TableHead className="w-[42px] text-right px-1">Age</TableHead>
@@ -975,7 +984,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                     return (
                       <Collapsible key={opp.id} asChild open={expandedRows.has(opp.id)} onOpenChange={() => toggleRow(opp.id)}>
                         <>
-                          <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' ? 'animate-flash-red' : ''}`}>
+                          <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' ? 'bg-desk-urgent/5' : ''}`}>
                             {/* Anchor toggle */}
                             <TableCell className="px-1">
                               {opp.anchor_sale_id && (
@@ -999,14 +1008,13 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                             </TableCell>
                             {/* Tier */}
                             <TableCell className="px-2">
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-bold leading-tight ${tierColors[opp.tier] || 'bg-muted text-muted-foreground'}`}>
-                                {opp.tier.replace('_', ' ')}
-                              </span>
+                              {decisionTier(opp.tier) ? <Badge variant="outline" className={`rounded-sm px-1.5 py-0.5 text-[10px] ${decisionTier(opp.tier) === 'BUY' ? 'border-desk-positive/30 bg-desk-positive/10 text-desk-positive' : decisionTier(opp.tier) === 'WATCH' ? 'border-desk-caution/30 bg-desk-caution/10 text-desk-caution' : 'border-border bg-muted text-muted-foreground'}`}>{decisionTier(opp.tier)}</Badge> : null}
+                              <span className="mt-1 block text-[9px] text-muted-foreground">{opp.tier.replace(/_/g, ' ')}</span>
                             </TableCell>
                             {/* Vehicle */}
                             <TableCell className="px-2">
-                              <p className="font-medium text-foreground text-sm truncate">{opp.make} {opp.model}</p>
-                              <p className="text-[11px] text-muted-foreground truncate">{opp.variant}</p>
+                              <p className="min-w-[130px] font-medium text-foreground text-sm">{opp.make} {opp.model}</p>
+                              <p className="text-[11px] text-muted-foreground">{opp.variant}</p>
                             </TableCell>
                             {/* Ask */}
                             <TableCell className="text-right font-mono text-sm px-2">{fmt(opp.asking_price)}</TableCell>
@@ -1061,6 +1069,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                               </span>
                             </TableCell>
                             {/* Retail Median */}
+                            <TableCell className="text-right px-2 font-mono text-xs"><span>{fmt(returnedFloorGap(opp).dollars)}</span>{returnedFloorGap(opp).percent != null ? <span className="mt-1 block text-muted-foreground">{returnedFloorGap(opp).percent}%</span> : null}</TableCell>
                             <TableCell className="text-right px-2">
                               {opp.retail_median ? (
                                 <div>
@@ -1114,7 +1123,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                               </div>
                             </TableCell>
                             {/* Source */}
-                            <TableCell className="text-[11px] text-muted-foreground px-2 truncate">{opp.listing_source}</TableCell>
+                            <TableCell className="text-[11px] px-2"><span className="whitespace-nowrap font-medium">{sourceName(opp.listing_source)}</span><time dateTime={opp.created_at} className="mt-1 block whitespace-nowrap text-[10px] text-muted-foreground">{sydneyFoundTime(opp.created_at)}</time></TableCell>
                             <TableCell className="text-right font-mono text-sm px-1">{opp.year}</TableCell>
                             <TableCell className="text-right font-mono text-sm text-muted-foreground px-1">{fmtKm(opp.km)}</TableCell>
                             {/* Age */}
@@ -1152,7 +1161,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                                     variant="default"
                                     size="sm"
                                     className="text-xs h-7 px-2 gap-1"
-                                    onClick={() => updateStatus(opp.id, 'assigned', opp.best_account_id!)}
+                                    onClick={() => { if (opp.best_account_id) void updateStatus(opp.id, 'assigned', opp.best_account_id); }}
                                   >
                                     <Check className="h-3 w-3" />
                                     {isDealerMode ? 'Deal' : 'Assign'}

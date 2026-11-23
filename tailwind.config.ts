@@ -18,6 +18,10 @@ export default {
         mono: ['JetBrains Mono', 'monospace'],
       },
       colors: {
+        'desk-positive': 'hsl(var(--desk-positive))',
+        'desk-caution': 'hsl(var(--desk-caution))',
+        'desk-information': 'hsl(var(--desk-information))',
+        'desk-urgent': 'hsl(var(--desk-urgent))',
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
