@@ -3,10 +3,10 @@ import {
   Activity,
   Database,
   Fingerprint,
-  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Home,
   Target,
   FlaskConical,
@@ -17,18 +17,14 @@ import {
   DollarSign,
   BarChart3,
   Trophy,
-  Zap,
   Map,
   Bookmark,
   TrendingUp,
-  Bot,
   Building2,
-  FileSpreadsheet,
   Users,
-  Sparkles,
   Car,
   TrendingDown,
-  Tag,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,14 +34,9 @@ import { useState } from 'react';
 // ============================================================================
 // OPERATOR MODE NAVIGATION
 // ============================================================================
-// Backend/internal-only sections for admin/internal users.
+// Backend/internal-only navigation for admin/internal users.
 // Dealers cannot see or access these routes.
 // ============================================================================
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
 
 interface NavItem {
   path: string;
@@ -53,107 +44,82 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const operatorSections: NavSection[] = [
-  {
-    title: 'Fleet Enterprise',
-    items: [
-      { path: '/fleet/dashboard', label: 'Fleet Dashboard', icon: Building2 },
-      { path: '/fleet/buyer-terminal', label: 'Buyer Terminal', icon: Users },
-    ],
-  },
-  {
-    title: 'OogleBot',
-    items: [
-      { path: '/operator/ooglebot', label: 'OogleBot', icon: Bot },
-    ],
-  },
-  {
-    title: 'Trading',
-    items: [
-      { path: '/josh-desk', label: 'Josh Deal Desk', icon: Tag },
-      { path: '/operator/demand-desk', label: 'Demand Desk', icon: Car },
-      { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
-      { path: '/', label: 'Trading Desk', icon: DollarSign },
-      { path: '/operator/car-sales-watch', label: 'Car Sales Watch', icon: TrendingDown },
-      { path: '/today', label: 'Today', icon: Calendar },
-      { path: '/dealer-dashboard', label: 'Dealer Dashboard', icon: BarChart3 },
-    ],
-  },
-  {
-    title: 'Intelligence',
-    items: [
-      { path: '/intelligence', label: 'Dealer Intelligence', icon: TrendingUp },
-      { path: '/operator/buy-intelligence', label: 'Buy Intelligence', icon: Trophy },
-      { path: '/retail-signals', label: 'Retail Signals', icon: Zap },
-      { path: '/regional', label: 'Regional Dashboard', icon: Map },
-    ],
-  },
-  {
-    title: 'Matching & Alerts',
-    items: [
-      { path: '/operator/alerts-matches', label: 'Alerts & Matches', icon: Bell },
-    ],
-  },
-  {
-    title: 'Ingestion',
-    items: [
-      { path: '/operator/pipeline', label: 'Pipeline Health', icon: Activity },
-    ],
-  },
-  {
-    title: 'Matching Engine',
-    items: [
-      { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
-      { path: '/operator/fingerprint-alerts', label: 'Alert Controls', icon: Bell },
-      { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
-      { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
-      { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
-    ],
-  },
-  {
-    title: 'Sources',
-    items: [
-      { path: '/operator/sources', label: 'Data Sources', icon: Database },
-    ],
-  },
-  {
-    title: 'Reviews & Tools',
-    items: [
-      { path: '/buyer-review', label: 'Buyer Review Queue', icon: ClipboardList },
-      { path: '/sales-review', label: 'Sales Review', icon: ClipboardList },
-      { path: '/log-sale', label: 'Log Sale', icon: DollarSign },
-      { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark },
-    ],
-  },
-  {
-    title: 'Admin',
-    items: [
-      { path: '/operator/dealers', label: 'Dealer Management', icon: Users },
-      { path: '/operator/dealer-profiles', label: 'Dealer Profiles', icon: Building2 },
-      { path: '/operator/dealer-upload', label: 'Dealer Sales Upload', icon: FileSpreadsheet },
-      { path: '/operator/dealer-specs', label: 'Dealer Buy Specs', icon: Target },
-    ],
-  },
+// Flat day-to-day list, in operator workflow order.
+const operatorItems: NavItem[] = [
+  { path: '/', label: 'Trading Desk', icon: DollarSign },
+  { path: '/operator/alerts-matches', label: 'Alerts & Matches', icon: Bell },
+  { path: '/operator/car-sales-watch', label: 'Car Sales Watch', icon: TrendingDown },
+  { path: '/operator/buy-intelligence', label: 'Buy Intelligence', icon: Trophy },
+  { path: '/operator/sources', label: 'Dealer Sales Data', icon: Database },
+  { path: '/log-sale', label: 'Log Sale', icon: DollarSign },
+  { path: '/operator/pipeline', label: 'Source Health', icon: Activity },
+];
+
+// Less-frequently used admin and review screens, tucked away by default.
+const adminItems: NavItem[] = [
+  { path: '/operator/dealers', label: 'Dealer Management', icon: Users },
+  { path: '/operator/dealer-profiles', label: 'Dealer Profiles', icon: Building2 },
+  { path: '/intelligence', label: 'Dealer Intelligence', icon: TrendingUp },
+  { path: '/operator/demand-desk', label: 'Demand Desk', icon: Car },
+  { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
+  { path: '/today', label: 'Today', icon: Calendar },
+  { path: '/dealer-dashboard', label: 'Dealer Dashboard', icon: BarChart3 },
+  { path: '/regional', label: 'Regional Dashboard', icon: Map },
+  { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
+  { path: '/operator/fingerprint-alerts', label: 'Alert Controls', icon: Bell },
+  { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
+  { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
+  { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
+  { path: '/buyer-review', label: 'Buyer Review Queue', icon: ClipboardList },
+  { path: '/sales-review', label: 'Sales Review', icon: ClipboardList },
+  { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark },
+  { path: '/operator/dealer-specs', label: 'Dealer Buy Specs', icon: Target },
+  { path: '/fleet/dashboard', label: 'Fleet Dashboard', icon: Building2 },
+  { path: '/fleet/buyer-terminal', label: 'Buyer Terminal', icon: Users },
 ];
 
 export function OperatorSidebar() {
   const location = useLocation();
   const { currentUser, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+
+  const renderItem = (item: NavItem) => {
+    const isActive =
+      location.pathname === item.path ||
+      (item.path === '/' && location.pathname === '/operator/trading-desk');
+    return (
+      <Link key={item.path} to={item.path}>
+        <Button
+          variant={isActive ? 'navActive' : 'nav'}
+          className={cn(
+            'w-full',
+            collapsed ? 'justify-center px-2' : 'justify-start'
+          )}
+          title={collapsed ? item.label : undefined}
+        >
+          <item.icon className="h-4 w-4" />
+          {!collapsed && <span>{item.label}</span>}
+        </Button>
+      </Link>
+    );
+  };
 
   return (
-    <aside 
+    <aside
       className={cn(
-        "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
+        'flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300',
+        collapsed ? 'w-16' : 'w-64'
       )}
     >
       {/* Logo */}
-      <div className={cn(
-        "flex items-center justify-between px-4 h-16 border-b border-sidebar-border",
-        collapsed && "justify-center px-2"
-      )}>
-        <Link to="/operator" className={cn("flex items-center gap-3", collapsed && "gap-0")}>
+      <div
+        className={cn(
+          'flex items-center justify-between px-4 h-16 border-b border-sidebar-border',
+          collapsed && 'justify-center px-2'
+        )}
+      >
+        <Link to="/operator" className={cn('flex items-center gap-3', collapsed && 'gap-0')}>
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-destructive text-destructive-foreground font-bold text-lg">
             ⚙
           </div>
@@ -172,8 +138,8 @@ export function OperatorSidebar() {
           <Button
             variant="outline"
             className={cn(
-              "w-full",
-              collapsed ? "justify-center px-2" : "justify-start"
+              'w-full',
+              collapsed ? 'justify-center px-2' : 'justify-start'
             )}
           >
             <Home className="h-4 w-4" />
@@ -182,37 +148,36 @@ export function OperatorSidebar() {
         </Link>
       </div>
 
-      {/* Navigation Sections */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-4">
-        {operatorSections.map((section) => (
-          <div key={section.title}>
-            {!collapsed && (
-              <h2 className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {section.title}
-              </h2>
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {operatorItems.map(renderItem)}
+
+        {/* Admin group, closed by default */}
+        <div className="pt-2">
+          <Button
+            variant="nav"
+            onClick={() => setAdminOpen(!adminOpen)}
+            className={cn(
+              'w-full',
+              collapsed ? 'justify-center px-2' : 'justify-start'
             )}
-            <div className="space-y-1">
-              {section.items.map((item) => {
-                const isActive = location.pathname === item.path || (item.path === '/' && location.pathname === '/operator/trading-desk');
-                return (
-                  <Link key={item.path} to={item.path}>
-                    <Button
-                      variant={isActive ? "navActive" : "nav"}
-                      className={cn(
-                        "w-full",
-                        collapsed ? "justify-center px-2" : "justify-start"
-                      )}
-                      title={collapsed ? item.label : undefined}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.label}</span>}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+            title={collapsed ? 'Admin' : undefined}
+            aria-expanded={adminOpen}
+          >
+            <Settings className="h-4 w-4" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left">Admin</span>
+                {adminOpen ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
+              </>
+            )}
+          </Button>
+          {adminOpen && <div className="mt-1 space-y-1">{adminItems.map(renderItem)}</div>}
+        </div>
       </nav>
 
       {/* User section */}
@@ -225,7 +190,7 @@ export function OperatorSidebar() {
             </p>
           </div>
         )}
-        
+
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -235,7 +200,7 @@ export function OperatorSidebar() {
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </Button>
-          
+
           {!collapsed && (
             <Button
               variant="ghost"
