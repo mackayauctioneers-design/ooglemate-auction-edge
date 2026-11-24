@@ -929,8 +929,11 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         <p className="text-sm text-muted-foreground">
           {sorted.length} opportunities{filtersAreRestrictingResults ? ` · ${totalActionableCount} across all filters` : ''}
         </p>
+          </div>
+          <DeskValuation />
+        </div>
 
-        {/* Table */}
+        {/* Table — full page width, below the charts/valuation grid */}
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : sorted.length === 0 ? (
@@ -1254,9 +1257,6 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
             </div>
           </div>
         )}
-          </div>
-          <DeskValuation />
-        </div>
       </div>
     </Layout>
   );
