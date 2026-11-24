@@ -565,3 +565,6 @@ verify_jwt = false
 
 [functions.hermey-webhook]
 verify_jwt = false
+
+[functions.sales-ingest]
+verify_jwt = false
