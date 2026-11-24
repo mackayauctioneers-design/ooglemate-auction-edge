@@ -671,23 +671,13 @@ function toAlert(alert: AlertRecord): AlertView {
 }
 
 function aggregateOlder(sales: SaleRecord[]): OlderSalesAggregate {
-  if (sales.length < 3) {
-    return {
-      count: sales.length,
-      medianPrice: null,
-      withheldReason:
-        sales.length === 0
-          ? null
-          : "Older than 6 months. Individual prices and dates are withheld until at least 3 sales can form an aggregate.",
-    };
-  }
-  const prices = sales.map((sale) => sale.price).sort((a, b) => a - b);
-  const mid = Math.floor(prices.length / 2);
-  const median = prices.length % 2 === 1 ? prices[mid] : Math.round((prices[mid - 1] + prices[mid]) / 2);
   return {
     count: sales.length,
-    medianPrice: median,
-    withheldReason: "Older than 6 months. Only the count and median are shown.",
+    medianPrice: null,
+    withheldReason:
+      sales.length === 0
+        ? null
+        : "Older than 120 days. Prices are not used; only the count is shown.",
   };
 }
 

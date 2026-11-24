@@ -293,7 +293,7 @@ test("standalone dealer works without an Ooglecars yard id", async () => {
   }
 });
 
-test("insights keep other yards private and redact sales older than six months", async () => {
+test("insights keep other yards private and redact sales older than 120 days", async () => {
   const { secrets, server } = await boot();
   try {
     const patrick = await login(server.url, secrets, "patrick");
@@ -307,7 +307,7 @@ test("insights keep other yards private and redact sales older than six months",
     assert.equal(blob.includes("7777771"), false);
     assert.equal(blob.includes(secrets.markers.otherYard), false);
     assert.equal(insights.yards[0].olderSales.count, 3);
-    assert.equal(insights.yards[0].olderSales.medianPrice, 40000);
+    assert.equal(insights.yards[0].olderSales.medianPrice, null);
     assert.equal(insights.publicMarket[0].synthetic, true);
     const olderDate = new Date(DEMO_NOW.getTime() - 400 * 86_400_000).toISOString();
     assert.equal(blob.includes(olderDate), false);

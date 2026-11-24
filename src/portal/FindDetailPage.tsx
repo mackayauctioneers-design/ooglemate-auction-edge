@@ -130,7 +130,7 @@ export default function FindDetailPage() {
         <h2 className="font-semibold">Own sales comparison</h2>
         <p className="mt-1 text-sm text-neutral-600">{find.comparables.variantNote}</p>
         {find.comparables.recent.length === 0 ? (
-          <p className="mt-3 text-sm">No sales of this make and model in the last 6 months.</p>
+          <p className="mt-3 text-sm">No sales of this make and model in the last 120 days.</p>
         ) : (
           <ul className="mt-3 divide-y divide-neutral-200 border border-neutral-200 text-sm">
             {find.comparables.recent.map((sale) => (

@@ -29,8 +29,11 @@ export const VARIANT_MATCHES = ["matched", "unmatched", "insufficient_evidence"]
 export type VariantMatch = (typeof VARIANT_MATCHES)[number];
 
 export const DEMO_NOW = new Date("2026-11-06T00:00:00.000Z");
-/** Six calendar-ish months. Inclusive at the cutoff instant. */
-export const SIX_MONTHS_MS = 183 * 24 * 60 * 60 * 1000;
+/** Own-sale price window: only sales from the last 120 days carry a price. Inclusive at the cutoff instant. */
+export const OWN_SALE_PRICE_WINDOW_DAYS = 120;
+export const OWN_SALE_PRICE_WINDOW_MS = OWN_SALE_PRICE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+/** @deprecated Use OWN_SALE_PRICE_WINDOW_MS. Kept so existing imports don't break. */
+export const SIX_MONTHS_MS = OWN_SALE_PRICE_WINDOW_MS;
 
 export class ServiceError extends Error {
   readonly status: number;
@@ -291,7 +294,7 @@ export function displayedFloor(
   const latest = rows.map((sale) => sale.soldAt).sort().at(-1) ?? "";
   return {
     floorExGov: median,
-    floorSource: `Own-sale median of ${rows.length} ${opp.make} ${opp.model} ${variant} sale${rows.length === 1 ? "" : "s"} in the last 6 months, recorded ex-government charges. Not a VALO market range and not a fingerprint margin.`,
+    floorSource: `Own-sale median of ${rows.length} ${opp.make} ${opp.model} ${variant} sale${rows.length === 1 ? "" : "s"} in the last 120 days, recorded ex-government charges. Not a VALO market range and not a fingerprint margin.`,
     floorAsOf: latest.slice(0, 10),
     note: `This number is the median of the same recent own sale${rows.length === 1 ? "" : "s"} of this variant. VALO market range needs at least 3 comps. Fingerprint margin is retail truth minus cost. Neither is applied here.`,
   };
@@ -306,7 +309,7 @@ export function underFloorPct(asking: number | null, floor: number | null): numb
 export function isRecentSale(soldAt: string, now: Date): boolean {
   const t = new Date(soldAt).getTime();
   if (Number.isNaN(t)) return false;
-  return t >= now.getTime() - SIX_MONTHS_MS;
+  return t >= now.getTime() - OWN_SALE_PRICE_WINDOW_MS;
 }
 
 export function freshness(capturedAt: string, now: Date): string {

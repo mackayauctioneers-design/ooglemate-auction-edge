@@ -45,3 +45,9 @@
 - Dealership ID 3103, slug `oogle-cars-sandpit`, location ID 10799
 - [ ] Need API token pasted into a secure form (safe link not accessible to me)
 - [ ] Decide what the integration does (inventory feed? leads? sales?)
+
+## 120-day own-sale price window (Macka rule, 24 Nov 2026)
+- [x] domain.ts: OWN_SALE_PRICE_WINDOW_DAYS/MS (120), SIX_MONTHS_MS deprecated alias, isRecentSale + floorSource wording
+- [x] services.ts: aggregateOlder returns count only, medianPrice always null
+- [x] Wording: mcp.ts get_insights, DnaPage, FindDetailPage, InsightsPage
+- [x] isolation.test.ts renamed, medianPrice null expectation; all isolation tests pass (rls.integration fails on missing sudo in sandbox — environmental)

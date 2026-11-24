@@ -26,7 +26,7 @@ export default function InsightsPage() {
     <section className="space-y-6" data-testid="insights-page">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Insights</h1>
-        <p className="text-sm text-neutral-600">Recent sales show price and date. Sales older than six months are a count and, when there are enough of them, a median.</p>
+        <p className="text-sm text-neutral-600">Recent sales show price and date. Sales older than 120 days are shown as a count only.</p>
       </div>
       {insights.publicMarket.map((fact) => (
         <p key={fact.id} className="border border-neutral-200 p-3 text-sm">
@@ -41,7 +41,7 @@ export default function InsightsPage() {
             <div className="border border-neutral-200 p-3"><dt className="text-neutral-500">Under floor</dt><dd className="text-lg font-semibold">{yard.underFloorCount}</dd></div>
             <div className="border border-neutral-200 p-3"><dt className="text-neutral-500">Mandates</dt><dd className="text-lg font-semibold">{yard.mandateCount}</dd></div>
           </dl>
-          <h3 className="mt-5 font-semibold">Last 6 months</h3>
+          <h3 className="mt-5 font-semibold">Last 120 days</h3>
           {yard.recentSales.length === 0 ? <p className="mt-2 text-sm">No recent sales on file.</p> : (
             <ul className="mt-2 divide-y divide-neutral-200 border border-neutral-200 text-sm">
               {yard.recentSales.map((sale) => (

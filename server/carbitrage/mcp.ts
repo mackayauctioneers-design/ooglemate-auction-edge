@@ -51,7 +51,7 @@ export function toolCatalog(): ToolDef[] {
     },
     {
       name: "get_insights",
-      description: "Own insights. Recent sales include price and date for 6 months. Older sales are aggregates only. Includes own alerts.",
+      description: "Own insights. Recent sales include price and date for 120 days. Older sales are counts only (no prices). Includes own alerts.",
       inputSchema: { type: "object", properties: { ...YARD_PROP }, additionalProperties: false },
     },
     {

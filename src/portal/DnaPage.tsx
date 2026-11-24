@@ -47,7 +47,7 @@ export default function DnaPage() {
           </p>
           <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
             <div className="border border-neutral-200 p-3"><dt className="text-neutral-500">Sales</dt><dd className="text-lg font-semibold">{profile.salesSummary.total}</dd></div>
-            <div className="border border-neutral-200 p-3"><dt className="text-neutral-500">Last 6 months</dt><dd className="text-lg font-semibold">{profile.salesSummary.recentCount}</dd></div>
+            <div className="border border-neutral-200 p-3"><dt className="text-neutral-500">Last 120 days</dt><dd className="text-lg font-semibold">{profile.salesSummary.recentCount}</dd></div>
             <div className="border border-neutral-200 p-3"><dt className="text-neutral-500">Older</dt><dd className="text-lg font-semibold">{profile.salesSummary.olderCount}</dd></div>
           </dl>
           <h3 className="mt-5 font-semibold">Mandates</h3>
