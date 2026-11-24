@@ -52,11 +52,21 @@ export const directDeskData: DeskData = {
   },
 };
 
-export function gatewayDeskData(getToken: () => Promise<string | null>): DeskData {
+/** Gateway actions. Cross-yard ones (score, send, anchors, finds) are refused by the server unless the caller is the owner. */
+export interface GatewayDeskData extends DeskData {
+  gateway: true;
+  call<T = unknown>(action: string, body?: Record<string, unknown>): Promise<T>;
+}
+
+export function gatewayDeskData(getToken: () => Promise<string | null>): GatewayDeskData {
   const token = async () => { const t = await getToken(); if (!t) throw new Error('Signed out'); return t; };
+  const call = async <T,>(action: string, body: Record<string, unknown> = {}) => callDeskGateway<T>(await token(), { ...body, action });
   return {
     gateway: true,
-    async list(accountId) { return callDeskGateway(await token(), { action: 'list', account_id: accountId }); },
-    async update(id, patch) { await callDeskGateway(await token(), { action: 'update', id, patch }); },
+    call,
+    async list(accountId) { return call('list', { account_id: accountId }); },
+    async update(id, patch) { await call('update', { id, patch }); },
   };
 }
+
+export const isGateway = (d: DeskData | null | undefined): d is GatewayDeskData => !!d && d.gateway === true;

@@ -1,4 +1,4 @@
-import { directDeskData, type DeskData } from './deskData';
+import { directDeskData, isGateway, type DeskData } from './deskData';
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { DealerLayout } from '@/components/layout/DealerLayout';
@@ -231,6 +231,10 @@ interface TradingDeskPageProps {
 
 export default function TradingDeskPage({ mode = 'operator', lockedAccountId = null, data: deskData = directDeskData }: TradingDeskPageProps = {}) {
   const viaGateway = deskData.gateway;
+  const gw = isGateway(deskData) ? deskData : null;
+  // Cross-yard tools: old /auth operators, or the owner record via the gateway. Yard owners never see them (the server refuses anyway).
+  const [gatewayOwner, setGatewayOwner] = useState(false);
+  const allYards = !viaGateway || gatewayOwner;
   const isDealerMode = mode === 'dealer';
   const Layout = isDealerMode ? DealerLayout : OperatorLayout;
 
@@ -305,7 +309,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const { opportunities: merged, accounts: accts } = await deskData.list(filterAccount);
+      const listed = await deskData.list(filterAccount);
+      const { opportunities: merged, accounts: accts } = listed;
+      if (viaGateway) setGatewayOwner(Boolean((listed as { owner?: boolean }).owner));
       setOpportunities(merged as OperatorOpportunity[]);
       setAccounts(accts);
       setLastUpdated(new Date());
@@ -320,15 +326,18 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const runScoring = async () => {
-    if (viaGateway) { toast.error('Scoring is operator-only for now'); return; }
     setScoring(true);
     // Capture the selected dealer so post-run reload cannot drift to another tenant.
     const dealerScopeBefore = filterAccount;
     try {
-      const { error } = await supabase.functions.invoke('score-operator-opportunities', {
-        body: dealerScopeBefore !== 'all' ? { focus_account_id: dealerScopeBefore } : {},
-      });
-      if (error) throw error;
+      if (gw) {
+        await gw.call('score', dealerScopeBefore !== 'all' ? { focus_account_id: dealerScopeBefore } : {});
+      } else {
+        const { error } = await supabase.functions.invoke('score-operator-opportunities', {
+          body: dealerScopeBefore !== 'all' ? { focus_account_id: dealerScopeBefore } : {},
+        });
+        if (error) throw error;
+      }
       // Do NOT call resetFilters() — that would wipe the dealer context the
       // operator just chose, which the shared scoring pass would otherwise
       // mask by surfacing whichever tenant (typically Mackay) has the deepest
@@ -367,8 +376,13 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
 
-    // Watch dispatch and hunt creation stay with /auth operators until the gateway covers them.
-    if (newVal && listingId && !viaGateway) {
+    if (newVal && gw) {
+      // Server files the watch and hunt under the car's own yard.
+      gw.call('watch', { id }).catch(e => console.warn('Star-watch dispatch failed (non-blocking):', e));
+      gw.call<{ created?: boolean }>('hunt', { id }).then(r => { if (r?.created) toast.success('Hunt created — Arby will alert on similar arrivals'); }).catch(e => console.warn('Hunt mandate failed (non-blocking):', e));
+      return;
+    }
+    if (newVal && listingId) {
       // 1. Re-scrape this exact listing for price/condition/status changes.
       supabase.functions.invoke('star-watch-dispatch', {
         body: { listing_id: listingId, account_id: filterAccount || null },
@@ -431,7 +445,8 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
 
     // Also dispatch star-watch for reminder (implies starring) — internal Arby pipeline
-    if (listingId && !viaGateway) {
+    if (gw) { gw.call('watch', { id }).catch(e => console.warn('Star-watch dispatch failed (non-blocking):', e)); return; }
+    if (listingId) {
       supabase.functions.invoke('star-watch-dispatch', {
         body: { listing_id: listingId, account_id: filterAccount || null },
       }).then(({ error: watchErr }) => {
@@ -449,7 +464,6 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [sendingPush, setSendingPush] = useState<Set<string>>(new Set());
 
   const sendToDealer = async (opp: OperatorOpportunity) => {
-    if (viaGateway) { toast.error('Sending to a dealer is operator-only for now'); return; }
     const dealerName = opp.assigned_to_name || opp.best_account_name;
     if (!dealerName) { toast.error('No dealer matched to this opportunity'); return; }
 
@@ -461,6 +475,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         ? ` • ${format(new Date(opp.auction_datetime), 'd MMM h:mm a')}`
         : '';
 
+      if (gw) { await gw.call('send_to_dealer', { id: opp.id }); toast.success(`Push sent to ${dealerName}`); return; }
       const { error } = await supabase.functions.invoke('push-send', {
         body: {
           dealer_name: dealerName,
@@ -482,8 +497,16 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   };
 
   const deleteAnchor = async (oppId: string, anchorSaleId: string) => {
-    if (viaGateway) { toast.error('Removing anchors is operator-only for now'); return; }
     if (!confirm('Remove this anchor? The pipeline will not re-attach any anchor to this opportunity.')) return;
+    if (gw) {
+      try { await gw.call('remove_anchor', { id: oppId, anchor_sale_id: anchorSaleId }); } catch (e: any) { toast.error(e.message); return; }
+      setOpportunities(prev => prev.map(o => o.id === oppId ? {
+        ...o, anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
+        anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null, anchor_sale_trim_class: null,
+      } : o));
+      toast.success('Anchor removed — pipeline will not re-attach');
+      return;
+    }
     // Get current dismissed list
     const { data: existing } = await supabase.from('operator_opportunities').select('dismissed_anchor_ids').eq('id', oppId).single();
     const dismissed: string[] = (existing?.dismissed_anchor_ids as string[] || []);
@@ -701,8 +724,8 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               {isDealerMode && lockedAccountId && (
                 <HuntForThisDialog accountId={lockedAccountId} variant="outline" />
               )}
-              {!isDealerMode && (
-                <Button onClick={runScoring} disabled={scoring || viaGateway} variant="default" size="sm">
+              {!isDealerMode && allYards && (
+                <Button onClick={runScoring} disabled={scoring || !allYards} variant="default" size="sm">
                   {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                   {scoring ? 'Scoring…' : 'Run Scoring'}
                 </Button>
@@ -741,7 +764,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
 
         {/* KPI Strip - Clickable Tier Buttons */}
         <div className="border-y border-border" aria-label="Opportunity counters"><div className={`grid min-w-0 grid-cols-2 divide-x divide-border sm:grid-cols-5 ${isDealerMode ? 'xl:grid-cols-9' : 'xl:grid-cols-10'}`}>
-          {!isDealerMode && <CaroogleAIFindsDrawer compact />}
+          {!isDealerMode && allYards && <CaroogleAIFindsDrawer compact data={gw} />}
           {[
             { tier: 'NEW_24H', count: newCount, label: 'New 24h', className: 'text-desk-information' },
             { tier: 'CODE_RED', count: codeRedCount, label: 'Code Red', className: 'text-desk-urgent' },
@@ -1110,7 +1133,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                             {/* Actions — Assign Best + Override + Ignore + Link */}
                             <TableCell className="text-right px-2">
                               <div className="flex items-center justify-end gap-1">
-                                {!isDealerMode && (
+                                {!isDealerMode && allYards && (
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1204,7 +1227,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                                       <p className="text-xs text-muted-foreground">Trim</p>
                                       <p className="font-medium text-foreground">{opp.anchor_sale_trim_class || '-'}</p>
                                     </div>
-                                    <div className="flex items-end">
+                                    <div className={allYards ? "flex items-end" : "hidden"}>
                                       <Button
                                         variant="ghost"
                                         size="sm"

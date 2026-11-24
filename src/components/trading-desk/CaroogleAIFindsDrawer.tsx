@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { GatewayDeskData } from '@/pages/operator/deskData';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -60,7 +61,7 @@ const flagLabels: Record<string, string> = {
   FAST_MOVER: 'Fast Mover',
 };
 
-export function CaroogleAIFindsDrawer({ compact = false }: { compact?: boolean } = {}) {
+export function CaroogleAIFindsDrawer({ compact = false, data = null }: { compact?: boolean; data?: GatewayDeskData | null } = {}) {
   const [open, setOpen] = useState(false);
   const [finds, setFinds] = useState<CaroogleFind[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,7 +73,8 @@ export function CaroogleAIFindsDrawer({ compact = false }: { compact?: boolean }
   const fetchFinds = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      if (data) { const r = await data.call<{ finds: CaroogleFind[] }>('finds_list'); setFinds(r.finds || []); setLoaded(true); return; }
+      const { data: rows, error } = await supabase
         .from('caroogle_finds')
         .select('*')
         .in('status', ['active', 'starred'])
@@ -80,14 +82,14 @@ export function CaroogleAIFindsDrawer({ compact = false }: { compact?: boolean }
         .order('score', { ascending: false })
         .limit(100);
       if (error) throw error;
-      setFinds((data as CaroogleFind[]) || []);
+      setFinds((rows as CaroogleFind[]) || []);
       setLoaded(true);
     } catch (err) {
       console.error('Failed to load finds:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
     if (open || compact) fetchFinds();
@@ -96,9 +98,10 @@ export function CaroogleAIFindsDrawer({ compact = false }: { compact?: boolean }
   const runScanner = async () => {
     setScanning(true);
     try {
-      const { data, error } = await supabase.functions.invoke('market-scanner');
-      if (error) throw error;
-      toast.success(`Scanned ${data?.clusters_scanned || 0} clusters → ${data?.finds_created || 0} finds`);
+      let result: any;
+      if (data) { result = (await data.call<{ result: any }>('finds_scan')).result; }
+      else { const r = await supabase.functions.invoke('market-scanner'); if (r.error) throw r.error; result = r.data; }
+      toast.success(`Scanned ${result?.clusters_scanned || 0} clusters → ${result?.finds_created || 0} finds`);
       fetchFinds();
     } catch (err: any) {
       toast.error(err.message || 'Scanner failed');
@@ -109,15 +112,15 @@ export function CaroogleAIFindsDrawer({ compact = false }: { compact?: boolean }
 
   const toggleStar = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'starred' ? 'active' : 'starred';
-    const { error } = await supabase.from('caroogle_finds').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) { toast.error(error.message); return; }
+    if (data) { try { await data.call('finds_update', { id, status: newStatus }); } catch (e: any) { toast.error(e.message); return; } }
+    else { const { error } = await supabase.from('caroogle_finds').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id); if (error) { toast.error(error.message); return; } }
     setFinds(prev => prev.map(f => f.id === id ? { ...f, status: newStatus } : f));
     toast.success(newStatus === 'starred' ? 'Starred — watching closely' : 'Unstarred');
   };
 
   const dismissFind = async (id: string) => {
-    const { error } = await supabase.from('caroogle_finds').update({ status: 'dismissed', updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) { toast.error(error.message); return; }
+    if (data) { try { await data.call('finds_update', { id, status: 'dismissed' }); } catch (e: any) { toast.error(e.message); return; } }
+    else { const { error } = await supabase.from('caroogle_finds').update({ status: 'dismissed', updated_at: new Date().toISOString() }).eq('id', id); if (error) { toast.error(error.message); return; } }
     setFinds(prev => prev.filter(f => f.id !== id));
     toast.success('Dismissed');
   };

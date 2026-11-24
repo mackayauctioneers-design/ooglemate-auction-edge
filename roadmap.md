@@ -55,3 +55,5 @@
 ## Per-yard Trading Desk via Ooglecars login (approved 25 Nov)
 - [x] Tables, operator-desk gateway, desk wiring, tests, scan
 - [ ] Live sign-in check as Macka and as a single-yard dealer (needs real Ooglecars logins)
+- [x] Owner-only yard desks, cross-yard write fix, full gateway features, migration path (approved 25 Nov 7:18am)
+- [ ] After accept: add yard links and Macka's owner row to the live data

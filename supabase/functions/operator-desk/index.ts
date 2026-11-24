@@ -53,11 +53,34 @@ const store: DeskStore = {
     return { active: (ar.data ?? []) as Opp[], starred: (sr.data ?? []) as Opp[] };
   },
   async getOpp(id) {
-    const { data, error } = await db.from("operator_opportunities").select("id, best_account_id, assigned_to_account").eq("id", id).maybeSingle();
+    const { data, error } = await db.from("operator_opportunities")
+      .select("id, listing_id, best_account_id, best_account_name, assigned_to_account, assigned_to_name, make, model, variant, year, km, asking_price, tier, listing_source, source_url, auction_datetime, dismissed_anchor_ids")
+      .eq("id", id).maybeSingle();
     if (error) throw error; return data as Opp | null;
   },
   async updateOpp(id, patch) {
     const { error } = await db.from("operator_opportunities").update(patch).eq("id", id); if (error) throw error;
+  },
+  async hasStarHunt({ make, model, accountId }) {
+    let q: any = db.from("active_mandates").select("id").eq("is_active", true).eq("lane", "star_hunt").eq("make", make).eq("model", model);
+    q = accountId ? q.eq("account_id", accountId) : q.is("account_id", null);
+    const { data, error } = await q.limit(1); if (error) throw error; return (data ?? []).length > 0;
+  },
+  async insertMandate(row) {
+    const { error } = await db.from("active_mandates").insert(row); if (error) throw error;
+  },
+  async listFinds() {
+    const { data, error } = await db.from("caroogle_finds").select("*").in("status", ["active", "starred"]).gte("score", 40).order("score", { ascending: false }).limit(100);
+    if (error) throw error; return data ?? [];
+  },
+  async updateFind(id, patch) {
+    const { data, error } = await db.from("caroogle_finds").update(patch).eq("id", id).select("id");
+    if (error) throw error; return (data ?? []).length > 0;
+  },
+  async invoke(fn, body) {
+    const { data, error } = await db.functions.invoke(fn, { body });
+    if (error) throw new DeskError(502, `${fn} failed`);
+    return data;
   },
 };
 
