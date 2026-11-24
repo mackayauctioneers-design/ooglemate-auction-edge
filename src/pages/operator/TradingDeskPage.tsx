@@ -1,3 +1,4 @@
+import { directDeskData, type DeskData } from './deskData';
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { DealerLayout } from '@/components/layout/DealerLayout';
@@ -224,9 +225,12 @@ function OverrideDealerPopover({
 interface TradingDeskPageProps {
   mode?: 'operator' | 'dealer';
   lockedAccountId?: string | null;
+  /** Data source; defaults to the direct calls used by /auth operators. */
+  data?: DeskData;
 }
 
-export default function TradingDeskPage({ mode = 'operator', lockedAccountId = null }: TradingDeskPageProps = {}) {
+export default function TradingDeskPage({ mode = 'operator', lockedAccountId = null, data: deskData = directDeskData }: TradingDeskPageProps = {}) {
+  const viaGateway = deskData.gateway;
   const isDealerMode = mode === 'dealer';
   const Layout = isDealerMode ? DealerLayout : OperatorLayout;
 
@@ -301,43 +305,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const scoped = filterAccount !== 'all';
-      // Freshness floor: never surface actionable opps older than 14 days on the
-      // desk. Stale rows belong to reconcile, not to the operator's eye.
-      const freshFloor = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-      const activeQuery = supabase
-        .from('operator_opportunities')
-        .select('*')
-        .in('status', ACTIONABLE_STATUSES)
-        .gte('created_at', freshFloor)
-        .order('created_at', { ascending: false })
-        .limit(scoped ? 1000 : 500);
-      const starredQuery = supabase
-        .from('operator_opportunities')
-        .select('*')
-        .eq('is_starred', true)
-        .not('status', 'in', '("new","assigned","reviewed")')
-        .limit(scoped ? 500 : 100);
-      if (scoped) {
-        activeQuery.eq('best_account_id', filterAccount);
-        starredQuery.eq('best_account_id', filterAccount);
-      }
-
-      // Fetch active opportunities + starred (regardless of status) in parallel
-      const [oppsRes, starredRes, acctsRes] = await Promise.all([
-        activeQuery,
-        starredQuery,
-        supabase.from('accounts').select('id, display_name'),
-      ]);
-      if (oppsRes.error) throw oppsRes.error;
-      // Merge: active opps + starred that weren't already in active set
-      const activeIds = new Set((oppsRes.data || []).map((o: any) => o.id));
-      const merged = [
-        ...(oppsRes.data || []),
-        ...((starredRes.data || []).filter((o: any) => !activeIds.has(o.id))),
-      ];
+      const { opportunities: merged, accounts: accts } = await deskData.list(filterAccount);
       setOpportunities(merged as OperatorOpportunity[]);
-      setAccounts((acctsRes.data || []) as { id: string; display_name: string }[]);
+      setAccounts(accts);
       setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load trading desk:', err);
@@ -345,11 +315,12 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     } finally {
       setLoading(false);
     }
-  }, [filterAccount]);
+  }, [filterAccount, deskData]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const runScoring = async () => {
+    if (viaGateway) { toast.error('Scoring is operator-only for now'); return; }
     setScoring(true);
     // Capture the selected dealer so post-run reload cannot drift to another tenant.
     const dealerScopeBefore = filterAccount;
@@ -384,20 +355,20 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
       update.assigned_to_name = acct?.display_name || assignTo;
       update.assigned_at = new Date().toISOString();
     }
-    const { error } = await supabase.from('operator_opportunities').update(update).eq('id', id);
-    if (error) { toast.error(error.message); return; }
+    try { await deskData.update(id, assignTo ? { status: newStatus, assigned_to_account: assignTo } : { status: newStatus }); }
+    catch (e: any) { toast.error(e.message); return; }
     toast.success(`Status → ${newStatus}`);
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, ...update } : o));
   };
 
   const toggleStar = async (id: string, current: boolean, listingId?: string) => {
     const newVal = !current;
-    const { error } = await supabase.from('operator_opportunities').update({ is_starred: newVal, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) { toast.error(error.message); return; }
+    try { await deskData.update(id, { is_starred: newVal }); } catch (e: any) { toast.error(e.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
 
-    if (newVal && listingId) {
+    // Watch dispatch and hunt creation stay with /auth operators until the gateway covers them.
+    if (newVal && listingId && !viaGateway) {
       // 1. Re-scrape this exact listing for price/condition/status changes.
       supabase.functions.invoke('star-watch-dispatch', {
         body: { listing_id: listingId, account_id: filterAccount || null },
@@ -455,13 +426,12 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     // Set reminder 1 hour before auction
     const auctionDt = new Date(auctionDatetime);
     const reminderDt = new Date(auctionDt.getTime() - 60 * 60 * 1000);
-    const { error } = await supabase.from('operator_opportunities').update({ reminder_at: reminderDt.toISOString(), is_starred: true, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) { toast.error(error.message); return; }
+    try { await deskData.update(id, { reminder_at: reminderDt.toISOString(), is_starred: true }); } catch (e: any) { toast.error(e.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: reminderDt.toISOString(), is_starred: true } : o));
     toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
 
     // Also dispatch star-watch for reminder (implies starring) — internal Arby pipeline
-    if (listingId) {
+    if (listingId && !viaGateway) {
       supabase.functions.invoke('star-watch-dispatch', {
         body: { listing_id: listingId, account_id: filterAccount || null },
       }).then(({ error: watchErr }) => {
@@ -471,8 +441,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   };
 
   const clearReminder = async (id: string) => {
-    const { error } = await supabase.from('operator_opportunities').update({ reminder_at: null, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) { toast.error(error.message); return; }
+    try { await deskData.update(id, { reminder_at: null }); } catch (e: any) { toast.error(e.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: null } : o));
     toast.success('Reminder cleared');
   };
@@ -480,6 +449,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [sendingPush, setSendingPush] = useState<Set<string>>(new Set());
 
   const sendToDealer = async (opp: OperatorOpportunity) => {
+    if (viaGateway) { toast.error('Sending to a dealer is operator-only for now'); return; }
     const dealerName = opp.assigned_to_name || opp.best_account_name;
     if (!dealerName) { toast.error('No dealer matched to this opportunity'); return; }
 
@@ -512,6 +482,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   };
 
   const deleteAnchor = async (oppId: string, anchorSaleId: string) => {
+    if (viaGateway) { toast.error('Removing anchors is operator-only for now'); return; }
     if (!confirm('Remove this anchor? The pipeline will not re-attach any anchor to this opportunity.')) return;
     // Get current dismissed list
     const { data: existing } = await supabase.from('operator_opportunities').select('dismissed_anchor_ids').eq('id', oppId).single();
@@ -731,7 +702,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                 <HuntForThisDialog accountId={lockedAccountId} variant="outline" />
               )}
               {!isDealerMode && (
-                <Button onClick={runScoring} disabled={scoring} variant="default" size="sm">
+                <Button onClick={runScoring} disabled={scoring || viaGateway} variant="default" size="sm">
                   {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                   {scoring ? 'Scoring…' : 'Run Scoring'}
                 </Button>

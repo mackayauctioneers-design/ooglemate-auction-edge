@@ -51,3 +51,7 @@
 - [x] services.ts: aggregateOlder returns count only, medianPrice always null
 - [x] Wording: mcp.ts get_insights, DnaPage, FindDetailPage, InsightsPage
 - [x] isolation.test.ts renamed, medianPrice null expectation; all isolation tests pass (rls.integration fails on missing sudo in sandbox — environmental)
+
+## Per-yard Trading Desk via Ooglecars login (approved 25 Nov)
+- [x] Tables, operator-desk gateway, desk wiring, tests, scan
+- [ ] Live sign-in check as Macka and as a single-yard dealer (needs real Ooglecars logins)

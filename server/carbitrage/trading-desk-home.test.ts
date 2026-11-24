@@ -60,3 +60,12 @@ describe('Trading Desk presentation without invented data', () => {
   it('shows no trend without observations and uses loaded 24h windows', () => { assert.equal(counterTrend([], 'BUY', now), null); assert.equal(counterTrend(rows, 'BUY', now), 'up'); });
   it('displays found times in Sydney daylight time', () => { assert.match(sydneyFoundTime('2026-11-23T01:00:00Z'), /12:00 pm/); });
 });
+describe('per-yard desk routing', () => {
+  const who = { signedIn: true, operatorRole: null, buyer: false, franchiseDealer: false };
+  it('opens the yard desk for a verified yard member, even with buyer access', () => {
+    assert.equal(deskHomeDestination({ ...who, yardDesk: true, yardMember: true }), 'yard-desk');
+    assert.equal(deskHomeDestination({ ...who, buyer: true, yardDesk: true }), 'yard-desk');
+  });
+  it('keeps pure buyers on the buyer view', () => { assert.equal(deskHomeDestination({ ...who, buyer: true, yardDesk: false, yardMember: false }), '/portal/buyer-view'); });
+  it('shows no desk yet for members of unlinked yards', () => { assert.equal(deskHomeDestination({ ...who, yardMember: true }), 'no-desk'); });
+});

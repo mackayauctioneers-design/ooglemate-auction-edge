@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
-  }
   public: {
     Tables: {
       accounts: {
@@ -9842,6 +9837,27 @@ export type Database = {
           },
         ]
       }
+      owner_access: {
+        Row: {
+          active: boolean
+          created_at: string
+          note: string | null
+          ooglecars_user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          note?: string | null
+          ooglecars_user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          note?: string | null
+          ooglecars_user_id?: string
+        }
+        Relationships: []
+      }
       pending_stock_entry: {
         Row: {
           attempts: number
@@ -16855,6 +16871,32 @@ export type Database = {
         }
         Relationships: []
       }
+      yard_links: {
+        Row: {
+          account_id: string
+          created_at: string
+          ooglecars_dealership_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          ooglecars_dealership_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          ooglecars_dealership_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yard_links_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       auction_watch_pickles_sydney_gov: {
@@ -20369,3 +20411,4 @@ export const Constants = {
     },
   },
 } as const
+
