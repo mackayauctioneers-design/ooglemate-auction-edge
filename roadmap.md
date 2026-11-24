@@ -57,3 +57,11 @@
 - [ ] Live sign-in check as Macka and as a single-yard dealer (needs real Ooglecars logins)
 - [x] Owner-only yard desks, cross-yard write fix, full gateway features, migration path (approved 25 Nov 7:18am)
 - [ ] After accept: add yard links and Macka's owner row to the live data
+
+## Desk tidy (120d anchors, stale auctions, end times, WBM)
+- [x] 120-day anchors on scorer, fingerprint matcher, desk, Telegram
+- [x] Best fit only for yards with own sales in 120 days
+- [x] Auction end lookup (Slattery) + auto-expire ended/gone/stale finds
+- [x] Owner-only Carsales WBM strip (hidden while feed is dead)
+- [ ] Manheim/Grays end times — blocked: feed must send sale date (server fetch blocked)
+- [ ] Revive Carsales feed — blocked: Apify carsales actor/run needs restarting on the account

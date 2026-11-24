@@ -77,6 +77,24 @@ const store: DeskStore = {
     const { data, error } = await db.from("caroogle_finds").update(patch).eq("id", id).select("id");
     if (error) throw error; return (data ?? []).length > 0;
   },
+  async listingStates(listingIds) {
+    const out: Record<string, any> = {};
+    for (let i = 0; i < listingIds.length; i += 150) {
+      const { data, error } = await db.from("vehicle_listings").select("listing_id, status, sold_detected_at, last_seen_at, auction_datetime").in("listing_id", listingIds.slice(i, i + 150));
+      if (error) throw error;
+      for (const l of data ?? []) out[l.listing_id] = l;
+    }
+    return out;
+  },
+  // Owner-only for now; may become a paid dealer feature. Fresh = seen in the last 48h and still listed.
+  async listWbm() {
+    const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+    const { data, error } = await db.from("retail_listings")
+      .select("id, year, make, model, variant_raw, km, asking_price, market_price, price_badge, price_difference, listing_url, state, last_seen_at")
+      .eq("source", "carsales").ilike("price_badge", "%below market%").is("delisted_at", null).gte("last_seen_at", since)
+      .order("price_difference", { ascending: false, nullsFirst: false }).limit(12);
+    if (error) throw error; return data ?? [];
+  },
   async invoke(fn, body) {
     const { data, error } = await db.functions.invoke(fn, { body });
     if (error) throw new DeskError(502, `${fn} failed`);

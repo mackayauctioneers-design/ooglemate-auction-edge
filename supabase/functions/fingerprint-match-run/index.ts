@@ -1,3 +1,4 @@
+import { isFreshSale } from "../_shared/deskFreshness.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normaliseToOffroad } from "../_shared/price-normalisation.ts";
 
@@ -497,7 +498,9 @@ Deno.serve(async (req) => {
       // Score price against REBASED buy anchor (not historical median)
       // Normalise asking price to off-road equivalent before scoring
       const normalisedAskPrice = normaliseToOffroad(listing.asking_price, listing.price_type, listing.state);
-      const priceResult = scorePrice(normalisedAskPrice, fp.rebased_buy_anchor);
+      // 120-day rule: only fingerprints with an own sale in the last 120 days may price; older = trend only.
+      const priceAnchorFresh = isFreshSale(fp.last_sold_at);
+      const priceResult = scorePrice(normalisedAskPrice, priceAnchorFresh ? fp.rebased_buy_anchor : null);
       baseScore += priceResult.score;
       reasons.price = priceResult.reason;
 
@@ -594,10 +597,10 @@ Deno.serve(async (req) => {
         source_match_count: 1,
         last_search_at: new Date().toISOString(),
         // Rebased anchor prices
-        anchor_buy_price: fp.rebased_buy_anchor ? Math.round(Number(fp.rebased_buy_anchor)) : null,
-        anchor_sell_price: fp.rebased_sell_price ? Math.round(Number(fp.rebased_sell_price)) : null,
-        anchor_profit: expectedMargin,
-        median_sell_price: fp.historical_sell_median ? Math.round(Number(fp.historical_sell_median)) : null,
+        anchor_buy_price: priceAnchorFresh && fp.rebased_buy_anchor ? Math.round(Number(fp.rebased_buy_anchor)) : null,
+        anchor_sell_price: priceAnchorFresh && fp.rebased_sell_price ? Math.round(Number(fp.rebased_sell_price)) : null,
+        anchor_profit: priceAnchorFresh ? expectedMargin : null,
+        median_sell_price: priceAnchorFresh && fp.historical_sell_median ? Math.round(Number(fp.historical_sell_median)) : null,
       });
     }
 

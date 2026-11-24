@@ -1,4 +1,6 @@
 import { directDeskData, isGateway, type DeskData } from './deskData';
+import { blankStaleAnchor, expiryReason, formatAuctionEnd } from '../../../supabase/functions/_shared/deskFreshness';
+import { WbmStrip } from '@/components/trading-desk/WbmStrip';
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { DealerLayout } from '@/components/layout/DealerLayout';
@@ -125,11 +127,6 @@ function AuctionCalendarBadge({ datetime, status, house, targetPrice }: {
   const isUrgent = hoursUntil != null && hoursUntil >= 0 && hoursUntil <= 24;
   const isLive = hoursUntil != null && hoursUntil >= -2 && hoursUntil <= 2;
 
-  // Calendar mini-card
-  const monthStr = dt ? format(dt, 'MMM').toUpperCase() : '';
-  const dayStr = dt ? format(dt, 'd') : '';
-  const timeStr = dt ? format(dt, 'h:mm a') : '';
-  const dayOfWeek = dt ? format(dt, 'EEE') : '';
 
   const urgencyClass = isLive
     ? 'border-destructive bg-destructive/10 ring-2 ring-destructive/20'
@@ -143,20 +140,12 @@ function AuctionCalendarBadge({ datetime, status, house, targetPrice }: {
 
   return (
     <div className="flex items-start gap-2">
-      {/* Calendar tile */}
-      {dt && (
-        <div className={`flex flex-col items-center rounded-lg border px-2 py-1 min-w-[3rem] ${urgencyClass}`}>
-          <span className="text-[9px] font-bold tracking-wider text-muted-foreground">{monthStr}</span>
-          <span className="text-lg font-bold leading-tight text-foreground">{dayStr}</span>
-          <span className="text-[9px] text-muted-foreground">{dayOfWeek}</span>
-        </div>
-      )}
-      {/* Details */}
+      {/* Details: auction END, Sydney time */}
       <div className="space-y-0.5">
         {dt && (
-          <div className="flex items-center gap-1">
+          <div className={`flex items-center gap-1 rounded border px-1 ${urgencyClass}`}>
             <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs font-medium text-foreground">{timeStr}</span>
+            <span className="text-xs font-medium text-foreground whitespace-nowrap">{formatAuctionEnd(datetime)}</span>
           </div>
         )}
         {dt && !past && (
@@ -312,7 +301,11 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
       const listed = await deskData.list(filterAccount);
       const { opportunities: merged, accounts: accts } = listed;
       if (viaGateway) setGatewayOwner(Boolean((listed as { owner?: boolean }).owner));
-      setOpportunities(merged as OperatorOpportunity[]);
+      // Same rules as the server: no prices from anchors older than 120 days; ended auctions never show (starred kept).
+      const now = new Date();
+      setOpportunities((merged as any[])
+        .filter((o) => o.is_starred === true || !expiryReason(o, undefined, now))
+        .map((o) => blankStaleAnchor(o, now)) as OperatorOpportunity[]);
       setAccounts(accts);
       setLastUpdated(new Date());
     } catch (err) {
@@ -762,6 +755,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         {/* DealerSoul live top-strip (dealer mode only) */}
         {isDealerMode && <DealerSoulDealsStrip limit={20} />}
 
+        {/* Owner-only for now; may become a paid dealer feature. Hidden when the feed has nothing fresh. */}
+        {allYards && <WbmStrip data={gw} />}
+
         {/* KPI Strip - Clickable Tier Buttons */}
         <div className="border-y border-border" aria-label="Opportunity counters"><div className={`grid min-w-0 grid-cols-2 divide-x divide-border sm:grid-cols-5 ${isDealerMode ? 'xl:grid-cols-9' : 'xl:grid-cols-10'}`}>
           {!isDealerMode && allYards && <CaroogleAIFindsDrawer compact data={gw} />}
@@ -977,6 +973,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                           <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' ? 'bg-desk-urgent/5' : ''}`}>
                             {/* Anchor toggle */}
                             <TableCell className="px-1">
+                              {!opp.anchor_sale_id && (opp as any).anchor_trend_only && (
+                                <span className="text-[9px] text-muted-foreground" title="Older sales: trend only">trend</span>
+                              )}
                               {opp.anchor_sale_id && (
                                 <CollapsibleTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0">

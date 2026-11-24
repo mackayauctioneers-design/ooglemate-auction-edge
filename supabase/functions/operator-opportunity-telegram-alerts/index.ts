@@ -2,6 +2,7 @@
 // Polls operator_opportunities and pushes new actionable matches to a Telegram chat
 // via the Telegram Bot API. Stamps telegram_sent_at to prevent re-sends.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isFreshSale } from "../_shared/deskFreshness.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +55,9 @@ Deno.serve(async (req) => {
     const anchorYear = r.anchor_sale_id ? anchorYearById[r.anchor_sale_id] : null;
     const yearOk = r.year != null && anchorYear != null && Math.abs(r.year - anchorYear) <= 1;
     const kmOk = r.km != null && r.anchor_sale_km != null && Math.abs(r.km - r.anchor_sale_km) <= 15000;
-    if (!(yearOk && kmOk)) {
+    const fresh = isFreshSale(r.anchor_sale_sold_at);
+    (r as any)._trend_only = !!r.anchor_sale_id && !fresh;
+    if (!(yearOk && kmOk) || !fresh) {
       r.anchor_sale_buy_price = null;
       r.anchor_sale_sell_price = null;
       r.anchor_sale_sold_at = null;
@@ -108,7 +111,7 @@ function formatMessage(r: any): string {
   const under = fmt(r.best_under_buy);
   const anchor = r.anchor_sale_buy_price
     ? `\nAnchor sale: bought ${fmt(r.anchor_sale_buy_price)} → sold ${fmt(r.anchor_sale_sell_price)}${r.anchor_sale_sold_at ? ` (${new Date(r.anchor_sale_sold_at).toLocaleDateString()}` : ""}${r._anchor_year ? `, ${r._anchor_year}` : ""}${r.anchor_sale_km ? `, ${Math.round(r.anchor_sale_km / 1000)}k km` : ""}${r.anchor_sale_sold_at ? ")" : ""}`
-    : "\nAnchor sale: — (no close proven winner)";
+    : r._trend_only ? "\nOlder sales: trend only" : "\nAnchor sale: — (no close proven winner)";
   const retail = r.retail_median ? `\nRetail median: ${fmt(r.retail_median)}` : "";
   const dealer = r.best_account_name ? `\nBest fit: <b>${escape(r.best_account_name)}</b>` : "";
   const src = r.source_url ? `\n${r.source_url}` : "";

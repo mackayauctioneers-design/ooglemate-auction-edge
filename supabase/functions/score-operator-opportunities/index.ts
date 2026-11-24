@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { derivePlatform, extractBadge as sharedExtractBadge } from "../_shared/taxonomy/derivePlatform.ts";
+import { chooseBestFit, eligibleYards, expiryReason, isFreshSale } from "../_shared/deskFreshness.ts";
 
 /**
  * SCORE OPERATOR OPPORTUNITIES — v2 (Delta + Caps + Rank-before-Insert)
@@ -151,6 +152,7 @@ interface CandidateListing {
   listing_id: string;
   source: string;
   source_type: "auction" | "retail" | "shadow";
+  auction_datetime?: string | null;
   make: string;
   model: string;
   year: number;
@@ -290,12 +292,16 @@ function scoreListingAgainstAccounts(
   salesByAccount: Record<string, any[]>,
   accountNames: Record<string, string>,
   weights: WeightsMap,
+  eligible: Set<string> = new Set(Object.keys(salesByAccount)),
+  now: Date = new Date(),
 ): { best: AccountMatch; alts: AccountMatch[]; tier: string; listing_age_score?: number; listing_age_reason?: string } | null {
   const accountMatches: AccountMatch[] = [];
   const isRetail = listing.source_type === "retail";
 
   for (const [acctId, acctSales] of Object.entries(salesByAccount)) {
     const matches = acctSales.filter((s: any) => {
+      // Price anchors only from this yard's own sales in the last 120 days.
+      if (!isFreshSale(s.sold_at, now)) return false;
       if (s.platform_class !== listing.platform_class) return false;
       if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
       if (!trimAllowed(listing.platform_class, listing.trim_class, s.trim_class)) return false;
@@ -356,8 +362,11 @@ function scoreListingAgainstAccounts(
 
   // Rank by weighted margin so dealer preferences influence "best account"
   accountMatches.sort((a, b) => b.weighted_margin - a.weighted_margin);
-  const best = accountMatches[0];
-  const alts = accountMatches.slice(1);
+  // Best fit: only yards with own sales in the last 120 days.
+  const pick = chooseBestFit(accountMatches, eligible);
+  if (!pick.best) return null;
+  const best = pick.best;
+  const alts = pick.alts;
 
   // Tiering uses weighted margin (winners get tier boosts, avoid-list gets demoted)
   let tier: string;
@@ -397,6 +406,38 @@ function tierScore(tier: string): number {
     case "WATCH": return 30;
     default: return 0;
   }
+}
+
+// ── STALE EXPIRY ─────────────────────────────────────────────────────────────
+
+async function expireStaleOpportunities(sb: any, now: Date): Promise<Record<string, number>> {
+  const counts: Record<string, number> = { auction_ended: 0, source_gone: 0, source_stale: 0 };
+  const { data: opps, error } = await sb.from("operator_opportunities")
+    .select("id, listing_id, listing_source, auction_datetime")
+    .in("status", ["new", "assigned", "reviewed"]).limit(5000);
+  if (error) throw error;
+  const rows = opps || [];
+  const listingIds = [...new Set(rows.map((o: any) => o.listing_id).filter((x: any) => typeof x === "string" && !x.startsWith("retail:")))];
+  const states = new Map<string, any>();
+  for (let i = 0; i < listingIds.length; i += 150) {
+    const { data } = await sb.from("vehicle_listings")
+      .select("listing_id, status, sold_detected_at, last_seen_at, auction_datetime")
+      .in("listing_id", listingIds.slice(i, i + 150));
+    for (const l of data || []) states.set(l.listing_id, l);
+  }
+  const toExpire: string[] = [];
+  for (const o of rows) {
+    const reason = expiryReason(o, states.get(o.listing_id), now);
+    if (reason) { counts[reason]++; toExpire.push(o.id); }
+  }
+  for (let i = 0; i < toExpire.length; i += 200) {
+    const { error: upErr } = await sb.from("operator_opportunities")
+      .update({ status: "expired", updated_at: now.toISOString() })
+      .in("id", toExpire.slice(i, i + 200)).in("status", ["new", "assigned", "reviewed"]);
+    if (upErr) console.error("[SCORE-V2] Expire update error:", upErr.message);
+  }
+  console.log(`[SCORE-V2] Expired stale desk rows:`, counts);
+  return counts;
 }
 
 // ── MAIN ─────────────────────────────────────────────────────────────────────
@@ -453,7 +494,8 @@ Deno.serve(async (req) => {
       .from("vehicle_sales_truth")
       .select("id, account_id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, variant, platform_class, drivetrain_bucket, drive_type")
       .not("buy_price", "is", null)
-      .not("sale_price", "is", null);
+      .not("sale_price", "is", null)
+      .order("sold_at", { ascending: false, nullsFirst: false });
     if (focusAccountId) salesQuery = salesQuery.eq("account_id", focusAccountId);
     const { data: allSales } = await salesQuery;
 
@@ -462,6 +504,7 @@ Deno.serve(async (req) => {
       return respond({ success: true, scored: 0, reason: "no_sales_data" });
     }
 
+    const runNow = new Date();
     const salesByAccount: Record<string, any[]> = {};
     for (const rawSale of allSales) {
       const profit = rawSale.sale_price - Number(rawSale.buy_price);
@@ -498,6 +541,12 @@ Deno.serve(async (req) => {
     const accountNames: Record<string, string> = {};
     for (const a of accounts) accountNames[a.id] = a.display_name;
 
+    // Best-fit eligibility from ANY own sale in the last 120 days (before trend filters).
+    const rawByAccount: Record<string, any[]> = {};
+    for (const s of allSales) if (s.account_id) (rawByAccount[s.account_id] ||= []).push(s);
+    const bestFitYards = eligibleYards(rawByAccount, runNow);
+    console.log(`[SCORE-V2] Best-fit eligible yards (120d own sales): ${bestFitYards.size}`);
+
     console.log(`[SCORE-V2] ${Object.keys(salesByAccount).length} accounts with sales`);
 
     // ── 2b. Load per-dealer intelligence weights ──
@@ -519,13 +568,17 @@ Deno.serve(async (req) => {
     }
 
 
+    // ── 2c. Auction end times: one page fetch per auction event (cheap, best-effort) ──
+    try { await sb.functions.invoke("auction-end-lookup", { body: {} }); }
+    catch (e) { console.warn("[SCORE-V2] auction-end-lookup skipped:", (e as Error).message); }
+
     // ── 3. Delta fetch from all sources ──
     const AUCTION_SOURCES = ["pickles","grays","manheim","slattery","f3","auto_auctions","vma","bidsonline"];
 
     // 3a. Priced retail/dealer listings (delta — cursor-gated)
     const listings = await fetchDelta(
       sb, "vehicle_listings",
-      "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
+      "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, status, sold_detected_at, last_seen_at",
       cutoff,
       (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).not("asking_price", "is", null).gt("asking_price", 0).neq("lemon_flag", true).not("auction_status", "in", '("sold","withdrawn","invalid")'),
       MAX_LISTINGS_PER_RUN,
@@ -538,7 +591,7 @@ Deno.serve(async (req) => {
     const auctionFreshCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const auctionPricedListings = await fetchDelta(
       sb, "vehicle_listings",
-      "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
+      "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, status, sold_detected_at, last_seen_at",
       auctionCutoff,
       (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).not("asking_price", "is", null).gt("asking_price", 0).gt("first_seen_at", auctionFreshCutoff).neq("lemon_flag", true).not("auction_status", "in", '("sold","withdrawn","invalid")'),
       MAX_LISTINGS_PER_RUN,
@@ -550,7 +603,7 @@ Deno.serve(async (req) => {
     // 3b. Priceless auction (full scan — same reason, with first_seen freshness guard)
     const pricelessListings = await fetchDelta(
       sb, "vehicle_listings",
-      "id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, last_seen_at",
+      "id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, status, sold_detected_at, last_seen_at",
       auctionCutoff,
       (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0").gt("first_seen_at", auctionFreshCutoff).neq("lemon_flag", true).not("auction_status", "in", '("sold","withdrawn","invalid")'),
       MAX_LISTINGS_PER_RUN,
@@ -593,6 +646,7 @@ Deno.serve(async (req) => {
       if (!make || !model || !l.year) continue;
       if (!passesVehicleFilter(l.year, l.km)) continue;
       if (!isProductionSource(l.source || "")) continue;
+      if (expiryReason({ listing_source: l.source, auction_datetime: l.auction_datetime }, l, runNow)) continue;
       seenIds.add(lid);
       const daysSince = Math.floor((Date.now() - new Date(l.first_seen_at || Date.now()).getTime()) / 86400000);
       candidates.push({
@@ -606,6 +660,7 @@ Deno.serve(async (req) => {
         first_seen_at: l.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: 0, pass_count: l.pass_count || 0,
         badge: null, fuel_type: null, body_type: null,
+        auction_datetime: l.auction_datetime || null,
       });
     }
 
@@ -668,6 +723,7 @@ Deno.serve(async (req) => {
       const model = (l.model || "").toUpperCase().trim();
       if (!make || !model || !l.year) continue;
       if (!passesVehicleFilter(l.year, l.km)) continue;
+      if (expiryReason({ listing_source: l.source, auction_datetime: l.auction_datetime }, l, runNow)) continue;
       seenIds.add(lid);
       pricelessCandidates.push({
         listing_id: lid, source: l.source || "unknown",
@@ -704,7 +760,7 @@ Deno.serve(async (req) => {
     for (const listing of candidates) {
       if (listing.trim_class === "UNKNOWN") { results.discarded++; continue; }
 
-      const match = scoreListingAgainstAccounts(listing, salesByAccount, accountNames, weightsByAccount);
+      const match = scoreListingAgainstAccounts(listing, salesByAccount, accountNames, weightsByAccount, bestFitYards, runNow);
       if (!match) { results.discarded++; continue; }
       results.scored++;
 
@@ -800,6 +856,7 @@ Deno.serve(async (req) => {
         retail_median_sample: retailMedianSample,
         retail_median_p25: retailMedianP25, retail_median_p75: retailMedianP75,
         retail_vs_ask_pct: retailVsAskPct,
+        ...(listing.auction_datetime ? { auction_datetime: listing.auction_datetime } : {}),
         status: "new",
       };
 
@@ -826,7 +883,9 @@ Deno.serve(async (req) => {
       let bestMargin = -Infinity;
 
       for (const [acctId, acctSales] of Object.entries(salesByAccount)) {
+        if (!bestFitYards.has(acctId)) continue;
         const matches = acctSales.filter((s: any) => {
+          if (!isFreshSale(s.sold_at, runNow)) return false;
           if (s.platform_class !== listing.platform_class) return false;
           if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
           if (!trimAllowed(listing.platform_class, listing.trim_class, s.trim_class)) return false;
@@ -863,12 +922,14 @@ Deno.serve(async (req) => {
 
       // Build pricing guide from all matched sales for this account
       const acctSales = salesByAccount[bestMatch.account_id] || [];
-      const relevantSales = acctSales.filter((s: any) => {
+      const trendSales = acctSales.filter((s: any) => {
         if (s.platform_class !== listing.platform_class) return false;
         if (Math.abs(s.year - listing.year) > 2) return false;
         const profit = s.sale_price - Number(s.buy_price);
         return profit > 0;
       });
+      // Older sales count toward the trend only; prices come from the last 120 days.
+      const relevantSales = trendSales.filter((s: any) => isFreshSale(s.sold_at, runNow));
       const buyPrices = relevantSales.map((s: any) => Number(s.buy_price)).sort((a: number, b: number) => a - b);
       const sellPrices = relevantSales.map((s: any) => Number(s.sale_price)).sort((a: number, b: number) => a - b);
       const medianBuy = buyPrices.length > 0 ? buyPrices[Math.floor(buyPrices.length / 2)] : null;
@@ -881,6 +942,7 @@ Deno.serve(async (req) => {
         historical_sell_median: medianSell,
         historical_profit_median: medianSell && medianBuy ? medianSell - medianBuy : null,
         sample_size: relevantSales.length,
+        trend_sample_size: trendSales.length,
         confidence: relevantSales.length >= 10 ? "HIGH" : relevantSales.length >= 5 ? "MEDIUM" : "LOW",
         guidance: `Target: $${bestMatch.target_price.toLocaleString()}. Historical buy median: $${medianBuy.toLocaleString()}${medianSell ? `, sell: $${medianSell.toLocaleString()}` : ""} (${relevantSales.length} trades).`,
       } : null;
@@ -975,6 +1037,12 @@ Deno.serve(async (req) => {
         console.error("[SCORE-V2] Auction revive error:", reviveErr.message);
       }
     }
+
+    // ── 7b. Auto-expire active desk rows whose auction ended or source listing is gone (never delete) ──
+    try {
+      const expired = await expireStaleOpportunities(sb, runNow);
+      (results as any).expired = expired;
+    } catch (e) { console.error("[SCORE-V2] Expiry pass error:", (e as Error).message); }
 
     // ── 8. Guarded upsert via DB function (terminal protection) ──
     for (let i = 0; i < toInsert.length; i += 25) {

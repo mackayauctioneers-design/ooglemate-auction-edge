@@ -571,3 +571,6 @@ verify_jwt = false
 
 [functions.operator-desk]
 verify_jwt = false
+
+[functions.auction-end-lookup]
+verify_jwt = false

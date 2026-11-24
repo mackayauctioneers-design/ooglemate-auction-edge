@@ -146,3 +146,39 @@ describe("owner_access-only actions", () => {
   });
   it("finds_update rejects unknown statuses", async () => { assert.equal(await call(OWNER, { action: "finds_update", id: OPP_A, status: "deleted" }), 400); });
 });
+
+describe("desk freshness (120-day anchors, expiry, WBM)", () => {
+  const old = new Date(Date.now() - 200 * 86400000).toISOString(), fresh = new Date(Date.now() - 10 * 86400000).toISOString();
+  const withRows = (rows: Opp[], states: Record<string, any> = {}) => {
+    const x = deps();
+    x.d.store.listOpps = async () => ({ active: rows, starred: [] });
+    x.d.store.listingStates = async () => states;
+    x.d.store.listWbm = async () => [{ id: "w1" }];
+    return x;
+  };
+  const base = { best_account_id: A, status: "new", listing_source: "slattery" };
+  it("list blanks anchors older than 120 days and keeps fresh ones", async () => {
+    const x = withRows([{ id: OPP_A, ...base, listing_id: "slattery:1", anchor_sale_id: "s1", anchor_sale_buy_price: 30000, anchor_sale_sold_at: old },
+      { id: OPP_B, ...base, listing_id: "slattery:2", anchor_sale_id: "s2", anchor_sale_buy_price: 31000, anchor_sale_sold_at: fresh }]);
+    const r: any = await handleDesk(await sign(OWNER), { action: "list" }, x.d);
+    const a = r.opportunities.find((o: Opp) => o.id === OPP_A), b = r.opportunities.find((o: Opp) => o.id === OPP_B);
+    assert.equal(a.anchor_sale_buy_price, null); assert.equal(a.anchor_sale_id, null); assert.equal(a.anchor_trend_only, true);
+    assert.equal(b.anchor_sale_buy_price, 31000);
+  });
+  it("list hides a find whose auction end has passed", async () => {
+    const x = withRows([{ id: OPP_A, ...base, listing_id: "slattery:1", auction_datetime: new Date(Date.now() - 3600000).toISOString() }]);
+    const r: any = await handleDesk(await sign(OWNER), { action: "list" }, x.d);
+    assert.equal(r.opportunities.length, 0);
+  });
+  it("list hides a find whose source listing is gone or stale", async () => {
+    const x = withRows([{ id: OPP_A, ...base, listing_id: "slattery:1" }, { id: OPP_B, ...base, listing_id: "slattery:2" }, { id: OPP_C, ...base, listing_id: "slattery:3" }],
+      { "slattery:1": { status: "sold" }, "slattery:2": { status: "active", last_seen_at: new Date(Date.now() - 40 * 3600000).toISOString() }, "slattery:3": { status: "active", last_seen_at: new Date().toISOString() } });
+    const r: any = await handleDesk(await sign(OWNER), { action: "list" }, x.d);
+    assert.deepEqual(r.opportunities.map((o: Opp) => o.id), [OPP_C]);
+  });
+  it("WBM list is owner-only: yard owner gets 403, owner gets rows", async () => {
+    assert.equal(await call(DEALER_A, { action: "wbm_list" }, withRows([])), 403);
+    const r: any = await handleDesk(await sign(OWNER), { action: "wbm_list" }, withRows([]).d);
+    assert.deepEqual(r.listings, [{ id: "w1" }]);
+  });
+});

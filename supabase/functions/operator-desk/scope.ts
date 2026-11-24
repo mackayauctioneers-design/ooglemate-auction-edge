@@ -3,6 +3,8 @@
 // The browser never sends a yard: scope comes only from verified dealership membership (role = owner) + yard_links,
 // or the owner_access record (all yards). Cross-yard actions are owner_access-only.
 
+import { blankStaleAnchor, expiryReason, type ListingState } from "../_shared/deskFreshness.ts";
+
 export const ACTIONABLE_STATUSES = ["new", "assigned", "reviewed"] as const;
 const STATUSES = new Set(["new", "assigned", "reviewed", "purchased", "passed", "expired", "lost", "watching"]);
 const FIND_STATUSES = new Set(["active", "starred", "dismissed"]);
@@ -26,6 +28,10 @@ export interface DeskStore {
   insertMandate(row: Mandate): Promise<void>;
   listFinds(): Promise<unknown[]>;
   updateFind(id: string, patch: Record<string, unknown>): Promise<boolean>;
+  /** Source listing state by listing_id, used to hide finds whose auction ended or listing is gone. */
+  listingStates?(listingIds: string[]): Promise<Record<string, ListingState>>;
+  /** Fresh Carsales "well below market" listings (owner-only). */
+  listWbm?(): Promise<unknown[]>;
   /** Calls an existing backend function with the server client. Name is fixed by the action, never by the caller. */
   invoke(fn: "score-operator-opportunities" | "star-watch-dispatch" | "push-send" | "market-scanner", body: Record<string, unknown>): Promise<unknown>;
 }
@@ -136,7 +142,13 @@ export async function handleDesk(token: string, body: unknown, deps: Deps): Prom
       const scoped = focus !== null || scope.accountIds !== null;
       const { active, starred } = await deps.store.listOpps({ accountIds: scope.accountIds, focus, freshFloor, activeLimit: scoped ? 1000 : 500, starredLimit: scoped ? 500 : 100 });
       const ids = new Set(active.map((o) => o.id));
-      const opportunities = [...active, ...starred.filter((o) => !ids.has(o.id))].filter((o) => inScope(scope, o)).map((o) => redact(scope, o));
+      const merged = [...active, ...starred.filter((o) => !ids.has(o.id))].filter((o) => inScope(scope, o));
+      const lids = [...new Set(merged.map((o) => o.listing_id).filter((x): x is string => typeof x === "string" && !x.startsWith("retail:")))];
+      const states = deps.store.listingStates && lids.length ? await deps.store.listingStates(lids) : {};
+      // Never show a find whose auction has ended or whose source listing is gone; anchors older than 120 days carry no prices.
+      const opportunities = merged
+        .filter((o) => o.is_starred === true || !expiryReason(o, states[o.listing_id as string], now))
+        .map((o) => blankStaleAnchor(redact(scope, o), now));
       return { owner: scope.owner, opportunities, accounts: await deps.store.accounts(scope.accountIds) };
     }
     case "update": {
@@ -211,6 +223,8 @@ export async function handleDesk(token: string, body: unknown, deps: Deps): Prom
       if (!(await deps.store.updateFind(id, { status: b.status, updated_at: now.toISOString() }))) throw new DeskError(404, "not found");
       return { ok: true };
     }
+    // Owner-only for now; may become a paid dealer feature.
+    case "wbm_list": { ownerOnly(scope); return { listings: deps.store.listWbm ? await deps.store.listWbm() : [] }; }
     case "finds_scan": { ownerOnly(scope); return { ok: true, result: await deps.store.invoke("market-scanner", {}) }; }
   }
   throw new DeskError(400, "unknown action");
