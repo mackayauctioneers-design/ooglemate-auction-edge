@@ -2,7 +2,7 @@
 // Auth: header x-ingest-token; its SHA-256 must equal TOKEN_SHA256 (the token itself lives only on the VPS, root-only).
 // Insert-only: ON CONFLICT (id) DO NOTHING via service role. Column + account allow-lists; rego/buyer/VIN fields rejected.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { FingerprintInputError, FingerprintRetryError, receiveFingerprints } from "./fingerprints.ts";
+import { FingerprintInputError, FingerprintRetryError, parseRetire, receiveFingerprints } from "./fingerprints.ts";
 import type { ExistingFingerprint } from "./fingerprints.ts";
 
 const TOKEN_SHA256 = "9fc1d44899fabf8047b8a3ac6d0d8fed18b580e49dfac4ac3c16173d71639651";
@@ -41,6 +41,29 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json(400, { error: "bad_json" }); }
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
+  // Mark cells that dropped out of the VPS snapshot inactive (no deletes).
+  if (body?.action === "fingerprints_deactivate") {
+    try {
+      const { account, ids } = parseRetire(body);
+      if (!ACCOUNTS.has(account)) return json(400, { error: "account_not_allowed" });
+      const { data: profiles, error: pe } = await sb.from("dealer_profiles").select("id").eq("account_id", account).limit(2);
+      if (pe) return json(500, { error: "profile_lookup_failed" });
+      if (profiles?.length !== 1) return json(400, { error: "dealer_profile_required" });
+      let deactivated = 0;
+      for (let o = 0; o < ids.length; o += 50) {
+        const { data, error } = await sb.from("dealer_fingerprints")
+          .update({ is_active: false, alert_enabled: false })
+          .in("fingerprint_id", ids.slice(o, o + 50)).eq("dealer_profile_id", profiles[0].id).select("fingerprint_id");
+        if (error) return json(500, { error: "deactivate_failed", deactivated });
+        deactivated += data?.length ?? 0;
+      }
+      return json(200, { received: ids.length, deactivated, not_found: ids.length - deactivated });
+    } catch (error) {
+      if (error instanceof FingerprintInputError) return json(400, { error: error.message });
+      return json(500, { error: "deactivate_failed" });
+    }
+  }
+
   // Same authenticated conduit; distinct allow-list and tenant-scoped fingerprint identity.
   if (body?.action === "fingerprints") {
     try {
@@ -71,10 +94,11 @@ Deno.serve(async (req) => {
           if (error) throw new Error("fingerprint_insert_failed");
           return (data?.length ?? 0) === 1;
         },
-        async update(row, previousTimestamp) {
+        async update(row) {
+          // Never touches is_active/alert_enabled, so site approval is preserved.
           const { data, error } = await sb.from("dealer_fingerprints").update(row)
             .eq("fingerprint_id", row.fingerprint_id).eq("dealer_profile_id", row.dealer_profile_id)
-            .eq("updated_at", previousTimestamp).select("fingerprint_id");
+            .select("fingerprint_id");
           if (error) throw new Error("fingerprint_update_failed");
           return (data?.length ?? 0) === 1;
         },

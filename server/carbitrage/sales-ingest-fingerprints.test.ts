@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fingerprintId, fingerprintMetrics, parseFingerprints, receiveFingerprints } from "../../supabase/functions/sales-ingest/fingerprints.ts";
+import { fingerprintId, fingerprintMetrics, parseFingerprints, parseRetire, receiveFingerprints } from "../../supabase/functions/sales-ingest/fingerprints.ts";
 import type { DealerProfile, ExistingFingerprint, FingerprintCell, FingerprintMetrics, FingerprintStore, NewFingerprint } from "../../supabase/functions/sales-ingest/fingerprints.ts";
 
 const account = "d24da4ea-f500-47fd-9b66-d2c9aa2d3f51";
@@ -20,9 +20,9 @@ class Store implements FingerprintStore {
     this.rows.set(row.fingerprint_id, { ...row });
     return true;
   }
-  async update(row: FingerprintMetrics, timestamp: string) {
+  async update(row: FingerprintMetrics) {
     const previous = this.rows.get(row.fingerprint_id);
-    if (this.conflict || !previous || previous.updated_at !== timestamp) return false;
+    if (this.conflict || !previous) return false;
     this.writes++;
     // Mirror the database trigger's server-managed timestamp.
     this.rows.set(row.fingerprint_id, { ...previous, ...row, updated_at: "2026-11-24T08:25:00Z" });
@@ -130,7 +130,7 @@ describe("VPS fingerprint write-back", () => {
     assert.deepEqual(store.rows.get(owner.fingerprint_id), owner);
     assert.equal(store.rows.size, 2);
   });
-  it("requests retry when another writer wins the compare-and-set", async () => {
+  it("requests retry when the row write does not land", async () => {
     const store = new Store(); store.conflict = true;
     assert.equal((await receiveFingerprints(body(), allowed, store)).retry_required, true);
     assert.equal(store.writes, 0);
@@ -141,5 +141,17 @@ describe("VPS fingerprint write-back", () => {
     assert.equal(result.retry_required, true);
     assert.equal(result.inserted, 0);
     assert.equal(store.writes, 0);
+  });
+  it("skips a replay when the database returns numeric columns as strings", async () => {
+    const store = new Store();
+    const stored = { ...fingerprintMetrics(account, profile, cell), avg_profit: "1243.78" as unknown as number, updated_at: "2026-11-24 06:53:38+00", is_active: true };
+    store.rows.set(stored.fingerprint_id, stored);
+    assert.deepEqual(await receiveFingerprints(body(), allowed, store), { received: 1, inserted: 0, updated: 0, skipped: 1, retry_required: false });
+    assert.equal(store.writes, 0);
+  });
+  it("parses deactivate requests into the same tenant-scoped IDs", () => {
+    const r = parseRetire({ action: "fingerprints_deactivate", account_id: account, cells: [{ level: "group", cell_key: "Toyota|Hilux||" }] });
+    assert.deepEqual(r.ids, [fingerprintId(account, cell)]);
+    assert.throws(() => parseRetire({ action: "fingerprints_deactivate", account_id: account, cells: [] }), /cells_required/);
   });
 });

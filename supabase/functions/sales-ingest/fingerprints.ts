@@ -32,6 +32,29 @@ function integer(value: unknown, min: number, max: number): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
 }
 
+// Postgres numeric columns may come back as strings ("500"); compare by value.
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || a === undefined || b === null || b === undefined) return (a ?? null) === (b ?? null);
+  if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+  return false;
+}
+
+export function parseRetire(body: unknown): { account: string; ids: string[] } {
+  if (!record(body) || body.action !== "fingerprints_deactivate" || typeof body.account_id !== "string" || !UUID.test(body.account_id)) {
+    throw new FingerprintInputError("invalid_deactivate_envelope");
+  }
+  if (!Array.isArray(body.cells) || body.cells.length < 1 || body.cells.length > 600) throw new FingerprintInputError("cells_required_1_to_600");
+  const account = body.account_id.toLowerCase();
+  const ids = body.cells.map((c: unknown, i: number) => {
+    if (!record(c) || (c.level !== "group" && c.level !== "mandate" && c.level !== "exact") || !text(c.cell_key, 200)) {
+      throw new FingerprintInputError(`invalid_deactivate_cell_at_${i}`);
+    }
+    return fingerprintId(account, { level: c.level, cell_key: c.cell_key });
+  });
+  return { account, ids: [...new Set(ids)] };
+}
+
 export function fingerprintId(account: string, cell: Pick<FingerprintCell, "level" | "cell_key">): string {
   // JSON tuple encoding avoids delimiter collisions; km_band is NOT a key component.
   return `vps-winner:${JSON.stringify([account.toLowerCase(), cell.level, cell.cell_key])}`;
@@ -106,7 +129,7 @@ export interface FingerprintStore {
   profiles(account: string): Promise<DealerProfile[]>;
   existing(ids: string[]): Promise<ExistingFingerprint[]>;
   insert(row: NewFingerprint): Promise<boolean>;
-  update(row: FingerprintMetrics, previousTimestamp: string): Promise<boolean>;
+  update(row: FingerprintMetrics): Promise<boolean>;
 }
 
 export async function receiveFingerprints(body: unknown, allowed: ReadonlySet<string>, store: FingerprintStore, now = Date.now) {
@@ -130,12 +153,11 @@ export async function receiveFingerprints(body: unknown, allowed: ReadonlySet<st
     const metrics = fingerprintMetrics(account, profile, cell);
     const prior = existing.get(metrics.fingerprint_id);
     const sameMetrics = prior && (Object.keys(metrics) as (keyof FingerprintMetrics)[])
-      .every((key) => key === "updated_at" || prior[key] === metrics[key]);
+      .every((key) => key === "updated_at" || sameValue(prior[key], metrics[key]));
     if (sameMetrics) {
       skipped++;
     } else if (prior) {
-      // updated_at is server-managed. Use it only for concurrency, not as a VPS cursor.
-      if (await store.update(metrics, prior.updated_at)) updated++;
+      if (await store.update(metrics)) updated++;
       else return { received: cells.length, inserted, updated, skipped, retry_required: true };
     } else {
       // Import is not approval to activate a buying target or enable dealer alerts.
