@@ -2,6 +2,8 @@
 // Auth: header x-ingest-token; its SHA-256 must equal TOKEN_SHA256 (the token itself lives only on the VPS, root-only).
 // Insert-only: ON CONFLICT (id) DO NOTHING via service role. Column + account allow-lists; rego/buyer/VIN fields rejected.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { FingerprintInputError, FingerprintRetryError, receiveFingerprints } from "./fingerprints.ts";
+import type { ExistingFingerprint } from "./fingerprints.ts";
 
 const TOKEN_SHA256 = "9fc1d44899fabf8047b8a3ac6d0d8fed18b580e49dfac4ac3c16173d71639651";
 const ACCOUNTS = new Set([
@@ -38,6 +40,52 @@ Deno.serve(async (req) => {
   let body: any;
   try { body = await req.json(); } catch { return json(400, { error: "bad_json" }); }
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
+  // Same authenticated conduit; distinct allow-list and tenant-scoped fingerprint identity.
+  if (body?.action === "fingerprints") {
+    try {
+      const deadline = Date.now() + 110_000;
+      const result = await receiveFingerprints(body, ACCOUNTS, {
+        async profiles(account) {
+          const { data, error } = await sb.from("dealer_profiles")
+            .select("id,account_id,dealer_name").eq("account_id", account).limit(2);
+          if (error) throw new Error("profile_lookup_failed");
+          return data ?? [];
+        },
+        async existing(ids) {
+          // Limit URL size while retaining batch ownership validation before any write.
+          const found: ExistingFingerprint[] = [];
+          for (let offset = 0; offset < ids.length; offset += 2) {
+            if (Date.now() >= deadline) throw new FingerprintRetryError("time_budget");
+            const { data, error } = await sb.from("dealer_fingerprints")
+              .select("fingerprint_id,dealer_profile_id,dealer_name,make,model,variant_family,year_min,year_max,max_km,sales_count,avg_profit,avg_days_to_sell,updated_at")
+              .in("fingerprint_id", ids.slice(offset, offset + 2));
+            if (error) throw new Error("fingerprint_lookup_failed");
+            found.push(...(data ?? []));
+          }
+          return found;
+        },
+        async insert(row) {
+          const { data, error } = await sb.from("dealer_fingerprints")
+            .upsert(row, { onConflict: "fingerprint_id", ignoreDuplicates: true }).select("fingerprint_id");
+          if (error) throw new Error("fingerprint_insert_failed");
+          return (data?.length ?? 0) === 1;
+        },
+        async update(row, previousTimestamp) {
+          const { data, error } = await sb.from("dealer_fingerprints").update(row)
+            .eq("fingerprint_id", row.fingerprint_id).eq("dealer_profile_id", row.dealer_profile_id)
+            .eq("updated_at", previousTimestamp).select("fingerprint_id");
+          if (error) throw new Error("fingerprint_update_failed");
+          return (data?.length ?? 0) === 1;
+        },
+      });
+      return json(result.retry_required ? 503 : 200, result);
+    } catch (error) {
+      if (error instanceof FingerprintInputError) return json(400, { error: error.message });
+      if (error instanceof FingerprintRetryError) return json(503, { error: "fingerprint_retry_required", retry_required: true });
+      return json(500, { error: "fingerprint_sync_failed" });
+    }
+  }
 
   // Read-only lookup for the push's overlap guard: existing non-feed rows for one allowed account.
   if (body?.action === "existing") {

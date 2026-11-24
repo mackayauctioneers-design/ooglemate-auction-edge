@@ -1,5 +1,7 @@
 # Architecture rules
 
+- VPS winner-cell write-back uses the existing token-authenticated sales-ingest conduit and canonical dealer_fingerprints; encode account + level + cell_key as a namespaced fingerprint_id (km_band is already represented in exact cell keys), resolve the profile server-side, reject private/raw fields, and preserve site approval/settings so importing cannot create alerts or a parallel buying engine.
+
 - Public market statistics are fetched directly from the VPS public aggregate endpoint by one small query hook; keep this page independent of authentication and backend functions to preserve the public read-only boundary.
 - The portal desk reads only the VPS desk queue, DNA, stock, auctions, summary and activity using the portal session bearer token and no cookies; prices, stages, gaps and counters are server-supplied (never derived), and synthetic fallback is restricted to development and Lovable preview hosts to preserve tenant isolation and the read-only boundary.
 - Desk summary and incremental worker activity use an independent 60-second read-only hook with timestamp cursor, deduplicated newest-first events and auth-change resets, so polling cannot disturb existing desk panels or retain a previous account's events.
