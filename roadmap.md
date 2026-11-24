@@ -3,7 +3,8 @@
 ## Ooglecars → Carbitrage connection
 - [x] Check sender code and receiving sales aggregates; confirmed 477 Ooglecars-feed sales across three accounts, received today, and recorded the distinct product responsibilities.
 - [x] Check downstream freshness and schedules; saved buying patterns are stale/missing, target runs last recorded 21 November, and the older 15-minute mandate schedule is disabled. Audit: `.lovable/reviews/ooglecars-carbitrage-link.md`.
-- [ ] Verify VPS account mapping, pattern refresh and buying-worker ownership before reconnecting the existing pipeline (blocked on a redacted VPS worker status report; source checkout does not expose running VPS configuration or Ooglecars live records).
+- [x] Review the supplied 24 November VPS report: sales push succeeds, current winner cells remain VPS-only, three legacy jobs read June data, and finder results remain chat-only; running VPS status is reported, not independently verified.
+- [ ] Agree the existing fingerprint write-back contract before changing sales-ingest (waiting on a redacted winner-cell row, stable key and dealer-profile mapping); keep the old 15-minute schedule off and dealer-result delivery separate.
 
 ## Trading Desk fix-only pass
 - [x] Correct canonical ticker consistency, wrap all ten mobile counters, reuse the shared guide with rego/state/km or details/km and clear failures, hide empty charts and remove duplicate scanning status. Verified 70 tests, build OK, signed-in operator root, controlled guide results/errors, buyer isolation and 320/390/768px counters; unpublished. Real guide call failed in this draft and now displays an error rather than substituted figures; live guide success remains unverified.

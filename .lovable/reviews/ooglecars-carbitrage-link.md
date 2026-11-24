@@ -32,6 +32,23 @@ Provide a **redacted status report**, with no tokens, passwords, customer detail
 
 The repair should reconnect the existing shared pipeline, not introduce another dealer-specific matcher or schedule.
 
+## VPS report received — 24 November 2026
+
+The following is supplied by the VPS agent, not independently checked against the running VPS:
+
+- Signed sales arrive at `/ingest/oogle-sales`; the existing push forwards allowed fields to `sales-ingest` every five minutes and on change. The report gives 477 sent, zero failures and zero dead letters, with the last push at 19:09 Sydney.
+- The three reported account mappings match the receiver's existing allow-list. ACM and Car Boutique are intentionally skipped; other unmapped dealerships are held. Stable IDs and overlap checks prevent duplicates; edits are held rather than overwriting sales.
+- `profile_builder` refreshes `dealer_winner_cells` after new sales. The report gives 707 Mackay, 252 AJH and 115 Shed cells, with successful runs today. None are written back to the site's `dealer_fingerprints`.
+- Three legacy fingerprint jobs still consume a JSON file dated 25 June. Successful exits therefore do not prove fresh site patterns.
+- VPS hunting, finder and dispatch workers are running, but their results remain in VPS stores or Carby's chat. Do not restart the site's old schedule and duplicate them.
+- The anonymised Grand Cherokee trace is not a proven winner: the reported four-sale history includes two losses and negative average gross. A single profitable sale or a REPEAT label must not bypass existing winner qualification.
+
+### Safe next boundary
+
+The proposed write-back can reconnect the existing fingerprint stage without another matcher or schedule, but its payload contract must be checked first. The checked-in fingerprint shape uses `dealer_profile_id` and `fingerprint_id`, not `account_id` and `cell_key`. Obtain a redacted winner-cell row, stable key definition and account-to-profile mapping; verify the live unique constraint before choosing an upsert conflict target. Preserve the existing sales insert-only path, tenant isolation, qualification and site-owned settings. Do not blindly mark every winner cell active or enable alerts.
+
+The current `sales-ingest` has no fingerprints action. No receiver changes are made until this mapping is settled. Redirecting or retiring the legacy jobs belongs to the VPS agent and must use the same canonical pipeline. Delivery of finder results to dealers is a separate decision; refreshing patterns alone will not make those results appear on the site.
+
 ## Changes in this check
 
 No application code, prices, sales records, permissions, schedules or screens changed. Nothing deployed or published. The product relationship and audit findings were recorded only.
