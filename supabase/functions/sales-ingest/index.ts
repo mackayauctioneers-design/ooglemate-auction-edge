@@ -49,13 +49,16 @@ Deno.serve(async (req) => {
       const { data: profiles, error: pe } = await sb.from("dealer_profiles").select("id").eq("account_id", account).limit(2);
       if (pe) return json(500, { error: "profile_lookup_failed" });
       if (profiles?.length !== 1) return json(400, { error: "dealer_profile_required" });
+      // One .eq per ID: vps-winner IDs contain quotes and commas that PostgREST in.(...) cannot match.
       let deactivated = 0;
-      for (let o = 0; o < ids.length; o += 50) {
-        const { data, error } = await sb.from("dealer_fingerprints")
+      for (let o = 0; o < ids.length; o += 10) {
+        const results = await Promise.all(ids.slice(o, o + 10).map((id) => sb.from("dealer_fingerprints")
           .update({ is_active: false, alert_enabled: false })
-          .in("fingerprint_id", ids.slice(o, o + 50)).eq("dealer_profile_id", profiles[0].id).select("fingerprint_id");
-        if (error) return json(500, { error: "deactivate_failed", deactivated });
-        deactivated += data?.length ?? 0;
+          .eq("fingerprint_id", id).eq("dealer_profile_id", profiles[0].id).select("fingerprint_id")));
+        for (const { data, error } of results) {
+          if (error) return json(500, { error: "deactivate_failed", deactivated });
+          deactivated += data?.length ?? 0;
+        }
       }
       return json(200, { received: ids.length, deactivated, not_found: ids.length - deactivated });
     } catch (error) {
@@ -76,15 +79,18 @@ Deno.serve(async (req) => {
           return data ?? [];
         },
         async existing(ids) {
-          // Limit URL size while retaining batch ownership validation before any write.
+          // One .eq per ID: vps-winner IDs contain quotes and commas that PostgREST in.(...) cannot match.
+          // Ownership of the whole batch is still validated before any write.
           const found: ExistingFingerprint[] = [];
-          for (let offset = 0; offset < ids.length; offset += 2) {
+          for (let offset = 0; offset < ids.length; offset += 10) {
             if (Date.now() >= deadline) throw new FingerprintRetryError("time_budget");
-            const { data, error } = await sb.from("dealer_fingerprints")
+            const results = await Promise.all(ids.slice(offset, offset + 10).map((id) => sb.from("dealer_fingerprints")
               .select("fingerprint_id,dealer_profile_id,dealer_name,make,model,variant_family,year_min,year_max,max_km,sales_count,avg_profit,avg_days_to_sell,updated_at")
-              .in("fingerprint_id", ids.slice(offset, offset + 2));
-            if (error) throw new Error("fingerprint_lookup_failed");
-            found.push(...(data ?? []));
+              .eq("fingerprint_id", id)));
+            for (const { data, error } of results) {
+              if (error) throw new Error("fingerprint_lookup_failed");
+              found.push(...(data ?? []));
+            }
           }
           return found;
         },
