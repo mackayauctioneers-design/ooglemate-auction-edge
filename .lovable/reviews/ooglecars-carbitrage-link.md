@@ -49,6 +49,29 @@ The proposed write-back can reconnect the existing fingerprint stage without ano
 
 The current `sales-ingest` has no fingerprints action. No receiver changes are made until this mapping is settled. Redirecting or retiring the legacy jobs belongs to the VPS agent and must use the same canonical pipeline. Delivery of finder results to dealers is a separate decision; refreshing patterns alone will not make those results appear on the site.
 
+## Winner-cell sample received and live identity checks — 24 November 2026
+
+The supplied sample is a group-level Toyota Hilux cell, with blank badge/platform/km band, years 2006–2026 and km maximum 400,000. It reports 23 all-time sales, 16 recent sales, a recent gross mean of 1243.78 and median days of 4.5. Its timestamp is 2026-11-24T17:53:38+11:00.
+
+Read-only live checks confirm:
+
+- Mackay account `d24da4ea-f500-47fd-9b66-d2c9aa2d3f51` resolves to dealer profile `ffdbbf25-1d9c-4402-ba49-fc4da4b77cb6`.
+- AJH account `8140eae1-2c36-40b6-a358-4f5ed05bbbcf` resolves to dealer profile `1fb22da9-37b9-4d95-a3a6-c50e07a4877e`.
+- No dealer profile resolves for Shed account `a2aec451-3b68-47f1-aaa8-ce7ef470b30d`; a name search for Shed also returns none. Do not invent a profile or borrow another dealer's identity.
+- The existing fingerprint uniqueness constraint is global `UNIQUE (fingerprint_id)`, not account plus cell key. An exported identity must therefore be tenant-scoped and distinguish levels and km bands; confirm the VPS's actual uniqueness definition before encoding it.
+- Mackay's existing Hilux fingerprint is an `owner_buy` SR5 target, not this broad group cell. Do not overwrite it based on make/model alone.
+
+### Proposed mapping, not implemented
+
+- Resolve an authenticated, allowed account to exactly one existing dealer profile on the receiver; do not trust `dealer_key` as permission or accept an arbitrary profile ID.
+- Map `n_sales_120` to recent `sales_count` and `avg_gross_120` to recent `avg_profit` only as an explicit export contract. Never substitute all-time means, ranking weight, shrinkage or adjusted median for the recent mean.
+- Keep `med_days` out of `avg_days_to_sell`: a median is not an average. Omit an unavailable average rather than inventing it. `score`, `weight` and `feedback_factor` are not interchangeable with site priority, profit score or recency weight.
+- Identity/make/model/year bounds/km maximum can be carried through with validated types. Blank group-level badge means no badge-specific claim. Do not treat this cell as an SR5 fingerprint.
+- Exclude `top_sources`, `top_buyers` and `example_sales` entirely, even when redacted; the actual export must not carry those private details. Use a strict allow-list.
+- The checked-in canonical mandate generator requires at least two sales, an active fingerprint and average profit at least 1500. This sample's recent mean of 1243.78 does not qualify; `adj_med_gross = 1500` must not be substituted to cross that gate. Do not change these existing rules as part of linkage.
+
+Remaining: confirm whether VPS uniqueness includes dealer, level, cell key and km band; provision Shed through an approved existing dealer workflow before importing its patterns. No pattern receiver, write-back, deployment, scheduler change or dealer-result delivery has been implemented.
+
 ## Changes in this check
 
 No application code, prices, sales records, permissions, schedules or screens changed. Nothing deployed or published. The product relationship and audit findings were recorded only.
