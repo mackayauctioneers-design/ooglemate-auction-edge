@@ -8,6 +8,13 @@
       "when": 1795551027837,
       "tag": "0000_yard_links_owner_access",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795573082409,
+      "tag": "0001_finder_catches_source_coverage",
+      "breakpoints": true
     }
   ]
 }

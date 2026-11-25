@@ -3,7 +3,7 @@
 // The browser never sends a yard: scope comes only from verified dealership membership (role = owner) + yard_links,
 // or the owner_access record (all yards). Cross-yard actions are owner_access-only.
 
-import { blankStaleAnchor, expiryReason, type ListingState } from "../_shared/deskFreshness.ts";
+import { blankStaleAnchor, expiryReason, needsManheimEnd, withManheimEnd, type CoverageSale, type SaleListing } from "../_shared/deskFreshness.ts";
 
 export const ACTIONABLE_STATUSES = ["new", "assigned", "reviewed"] as const;
 const STATUSES = new Set(["new", "assigned", "reviewed", "purchased", "passed", "expired", "lost", "watching"]);
@@ -29,7 +29,13 @@ export interface DeskStore {
   listFinds(): Promise<unknown[]>;
   updateFind(id: string, patch: Record<string, unknown>): Promise<boolean>;
   /** Source listing state by listing_id, used to hide finds whose auction ended or listing is gone. */
-  listingStates?(listingIds: string[]): Promise<Record<string, ListingState>>;
+  listingStates?(listingIds: string[]): Promise<Record<string, SaleListing>>;
+  /** sales[] of the latest manheim source_coverage row (Manheim lots have no per-lot end). */
+  manheimSales?(): Promise<CoverageSale[]>;
+  /** Owner-only finder catches, newest first. */
+  listCatches?(q: { offset: number; limit: number; source: string | null; status: string | null }): Promise<{ rows: unknown[]; total: number }>;
+  /** Owner-only source coverage rows for the most recent days. */
+  listCoverage?(): Promise<unknown[]>;
   /** Fresh Carsales "well below market" listings (owner-only). */
   listWbm?(): Promise<unknown[]>;
   /** Calls an existing backend function with the server client. Name is fixed by the action, never by the caller. */
@@ -145,8 +151,10 @@ export async function handleDesk(token: string, body: unknown, deps: Deps): Prom
       const merged = [...active, ...starred.filter((o) => !ids.has(o.id))].filter((o) => inScope(scope, o));
       const lids = [...new Set(merged.map((o) => o.listing_id).filter((x): x is string => typeof x === "string" && !x.startsWith("retail:")))];
       const states = deps.store.listingStates && lids.length ? await deps.store.listingStates(lids) : {};
+      const sales = deps.store.manheimSales && merged.some(needsManheimEnd) ? await deps.store.manheimSales() : null;
       // Never show a find whose auction has ended or whose source listing is gone; anchors older than 120 days carry no prices.
       const opportunities = merged
+        .map((o) => withManheimEnd(o, states[o.listing_id as string], sales))
         .filter((o) => o.is_starred === true || !expiryReason(o, states[o.listing_id as string], now))
         .map((o) => blankStaleAnchor(redact(scope, o), now));
       return { owner: scope.owner, opportunities, accounts: await deps.store.accounts(scope.accountIds) };
@@ -224,6 +232,16 @@ export async function handleDesk(token: string, body: unknown, deps: Deps): Prom
       return { ok: true };
     }
     // Owner-only for now; may become a paid dealer feature.
+    case "caught_list": {
+      ownerOnly(scope);
+      const page = Number.isInteger(b.page) && (b.page as number) >= 0 ? Math.min(b.page as number, 1000) : 0;
+      const str = (v: unknown) => (typeof v === "string" && v && v !== "all" && v.length <= 200 ? v : null);
+      const status = str(b.status);
+      if (status && !["live", "expired", "sold", "bought"].includes(status)) throw new DeskError(400, "invalid status");
+      if (!deps.store.listCatches) return { rows: [], total: 0, page, page_size: 50 };
+      return { ...(await deps.store.listCatches({ offset: page * 50, limit: 50, source: str(b.source), status })), page, page_size: 50 };
+    }
+    case "coverage_list": { ownerOnly(scope); return { rows: deps.store.listCoverage ? await deps.store.listCoverage() : [] }; }
     case "wbm_list": { ownerOnly(scope); return { listings: deps.store.listWbm ? await deps.store.listWbm() : [] }; }
     case "finds_scan": { ownerOnly(scope); return { ok: true, result: await deps.store.invoke("market-scanner", {}) }; }
   }

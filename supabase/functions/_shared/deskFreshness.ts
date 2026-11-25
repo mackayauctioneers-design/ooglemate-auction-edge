@@ -94,3 +94,31 @@ export function parseSlatteryCloses(html: string): { byAsset: Record<string, str
   }
   return { byAsset, earliest, latest };
 }
+
+/** One Manheim sale from source_coverage.sales: { sale, lots, closes_at }. */
+export type CoverageSale = { sale?: string | null; lots?: number | null; closes_at?: string | null };
+export type SaleListing = ListingState & { event_id?: string | null; auction_location?: string | null; location?: string | null };
+const saleKey = (s: unknown) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** closes_at of the first sale whose name matches one of the candidate names (case/punctuation-insensitive). */
+export function saleCloseFor(names: unknown[], sales: CoverageSale[] | null | undefined): string | null {
+  if (!Array.isArray(sales)) return null;
+  for (const n of names) {
+    const k = saleKey(n);
+    if (!k) continue;
+    const hit = sales.find((s) => saleKey(s?.sale) === k && typeof s.closes_at === "string" && Number.isFinite(Date.parse(s.closes_at)));
+    if (hit) return hit.closes_at as string;
+  }
+  return null;
+}
+
+/** Manheim lots carry no per-lot end: fill auction_datetime from the sale's close in the latest manheim coverage row.
+ *  A real per-lot end (on the find or its listing) is never overwritten. */
+export function withManheimEnd<T extends Record<string, unknown>>(opp: T, listing: SaleListing | undefined, sales: CoverageSale[] | null | undefined): T {
+  if (String(opp.listing_source ?? "").toLowerCase() !== "manheim") return opp;
+  if (opp.auction_datetime || listing?.auction_datetime) return opp;
+  const end = saleCloseFor([opp.sale_name, listing?.event_id, listing?.auction_location, listing?.location], sales);
+  return end ? { ...opp, auction_datetime: end } : opp;
+}
+
+export const needsManheimEnd = (o: Record<string, unknown>) => String(o.listing_source ?? "").toLowerCase() === "manheim" && !o.auction_datetime;

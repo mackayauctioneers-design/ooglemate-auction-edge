@@ -4,6 +4,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { FingerprintInputError, FingerprintRetryError, parseRetire, receiveFingerprints } from "./fingerprints.ts";
 import type { ExistingFingerprint } from "./fingerprints.ts";
+import { CatchInputError, KNOWN_ACTIONS, countUpsert, parseCatches, parseCoverage } from "./catches.ts";
 
 const TOKEN_SHA256 = "9fc1d44899fabf8047b8a3ac6d0d8fed18b580e49dfac4ac3c16173d71639651";
 const ACCOUNTS = new Set([
@@ -40,6 +41,44 @@ Deno.serve(async (req) => {
   let body: any;
   try { body = await req.json(); } catch { return json(400, { error: "bad_json" }); }
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
+  // Any named action must be one we know; only a body with no action reaches the sales handler.
+  if (body && typeof body === "object" && "action" in body && body.action !== undefined && !KNOWN_ACTIONS.has(body.action)) {
+    return json(400, { error: "unknown_action", action: body.action });
+  }
+
+  // Finder catches (upsert on catch_id) and per-source daily coverage (upsert on date + source). Owner-only tables.
+  if (body?.action === "finder_catches" || body?.action === "source_coverage") {
+    const action = body.action as string;
+    const received = Array.isArray(body.rows) ? body.rows.length : 0;
+    const fail = (status: number, error: string, extra: Record<string, unknown> = {}, counts = { inserted: 0, updated: 0 }) =>
+      json(status, { action, received, ...counts, error, ...extra });
+    try {
+      const catches = action === "finder_catches";
+      const rows = catches ? parseCatches(body.rows) : parseCoverage(body.rows);
+      const table = catches ? "finder_catches" : "source_coverage";
+      const keyOf = (r: any) => catches ? String(r.catch_id) : `${r.date}\u0000${r.source}`;
+      // Exact per-key lookups (keys may contain commas/quotes that in.(...) filters would mangle).
+      const existing = new Set<string>();
+      for (let i = 0; i < rows.length; i += 20) {
+        const res = await Promise.all(rows.slice(i, i + 20).map((r: any) => {
+          const q = sb.from(table).select(catches ? "catch_id" : "date,source");
+          return catches ? q.eq("catch_id", r.catch_id).limit(1) : q.eq("date", r.date).eq("source", r.source).limit(1);
+        }));
+        for (const { data, error } of res) {
+          if (error) return fail(500, "lookup_failed");
+          for (const d of data ?? []) existing.add(keyOf(d));
+        }
+      }
+      const now = new Date().toISOString();
+      const { error } = await sb.from(table).upsert(rows.map((r) => ({ ...r, received_at: now })), { onConflict: catches ? "catch_id" : "date,source" });
+      if (error) return fail(500, "upsert_failed", { detail: error.message.slice(0, 200) });
+      return json(200, { action, received: rows.length, ...countUpsert(rows.map(keyOf), existing) });
+    } catch (error) {
+      if (error instanceof CatchInputError) return fail(400, error.message, error.extra);
+      return fail(500, "ingest_failed");
+    }
+  }
 
   // Mark cells that dropped out of the VPS snapshot inactive (no deletes).
   if (body?.action === "fingerprints_deactivate") {

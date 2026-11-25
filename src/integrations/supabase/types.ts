@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
-  }
   public: {
     Tables: {
       accounts: {
@@ -4814,6 +4809,102 @@ export type Database = {
           id?: string
           report_date?: string
           report_json?: Json
+        }
+        Relationships: []
+      }
+      finder_catches: {
+        Row: {
+          alert_line: string | null
+          alerted_at: string | null
+          alerted_to: string | null
+          ask: number | null
+          badge: string | null
+          catch_id: string
+          check_this: boolean | null
+          closes_at: string | null
+          comp_count: number | null
+          corrected: boolean | null
+          engine_confidence: string | null
+          finder: string | null
+          finders: string[] | null
+          floor: number | null
+          floor_basis: string | null
+          found_at: string
+          gap_dollars: number | null
+          gap_pct: number | null
+          km: number | null
+          make: string | null
+          model: string | null
+          received_at: string
+          seller_type: string | null
+          source: string
+          state: string | null
+          status: string | null
+          updated_at: string | null
+          url: string | null
+          year: number | null
+        }
+        Insert: {
+          alert_line?: string | null
+          alerted_at?: string | null
+          alerted_to?: string | null
+          ask?: number | null
+          badge?: string | null
+          catch_id: string
+          check_this?: boolean | null
+          closes_at?: string | null
+          comp_count?: number | null
+          corrected?: boolean | null
+          engine_confidence?: string | null
+          finder?: string | null
+          finders?: string[] | null
+          floor?: number | null
+          floor_basis?: string | null
+          found_at: string
+          gap_dollars?: number | null
+          gap_pct?: number | null
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          received_at?: string
+          seller_type?: string | null
+          source: string
+          state?: string | null
+          status?: string | null
+          updated_at?: string | null
+          url?: string | null
+          year?: number | null
+        }
+        Update: {
+          alert_line?: string | null
+          alerted_at?: string | null
+          alerted_to?: string | null
+          ask?: number | null
+          badge?: string | null
+          catch_id?: string
+          check_this?: boolean | null
+          closes_at?: string | null
+          comp_count?: number | null
+          corrected?: boolean | null
+          engine_confidence?: string | null
+          finder?: string | null
+          finders?: string[] | null
+          floor?: number | null
+          floor_basis?: string | null
+          found_at?: string
+          gap_dollars?: number | null
+          gap_pct?: number | null
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          received_at?: string
+          seller_type?: string | null
+          source?: string
+          state?: string | null
+          status?: string | null
+          updated_at?: string | null
+          url?: string | null
+          year?: number | null
         }
         Relationships: []
       }
@@ -12711,6 +12802,45 @@ export type Database = {
           },
         ]
       }
+      source_coverage: {
+        Row: {
+          catches: number | null
+          date: string
+          errors: number | null
+          listings_scanned: number | null
+          new: number | null
+          quiet: boolean | null
+          received_at: string
+          sales: Json | null
+          source: string
+          well_below_market_flagged: number | null
+        }
+        Insert: {
+          catches?: number | null
+          date: string
+          errors?: number | null
+          listings_scanned?: number | null
+          new?: number | null
+          quiet?: boolean | null
+          received_at?: string
+          sales?: Json | null
+          source: string
+          well_below_market_flagged?: number | null
+        }
+        Update: {
+          catches?: number | null
+          date?: string
+          errors?: number | null
+          listings_scanned?: number | null
+          new?: number | null
+          quiet?: boolean | null
+          received_at?: string
+          sales?: Json | null
+          source?: string
+          well_below_market_flagged?: number | null
+        }
+        Relationships: []
+      }
       source_lane_map: {
         Row: {
           lane: string
@@ -20416,3 +20546,4 @@ export const Constants = {
     },
   },
 } as const
+

@@ -4,6 +4,7 @@
  * limits every read and write to the caller's own yard(s). The browser never sends its yard.
  */
 import { supabase } from '@/integrations/supabase/client';
+import { needsManheimEnd, withManheimEnd } from '../../../supabase/functions/_shared/deskFreshness';
 
 const GATEWAY = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/operator-desk`;
 const PUBLIC_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -41,8 +42,25 @@ export const directDeskData: DeskData = {
     const [oppsRes, starredRes, acctsRes] = await Promise.all([activeQuery, starredQuery, supabase.from('accounts').select('id, display_name')]);
     if (oppsRes.error) throw oppsRes.error;
     const activeIds = new Set((oppsRes.data || []).map((o: any) => o.id));
+    let opportunities: any[] = [...(oppsRes.data || []), ...((starredRes.data || []).filter((o: any) => !activeIds.has(o.id)))];
+    // Manheim lots have no per-lot end: use the sale close from the latest manheim coverage row (never over a real end).
+    const missing = opportunities.filter(needsManheimEnd);
+    if (missing.length) {
+      try {
+        const lids = [...new Set(missing.map((o) => o.listing_id).filter(Boolean))].slice(0, 300);
+        const [cov, lst] = await Promise.all([
+          (supabase as any).from('source_coverage').select('sales').eq('source', 'manheim').not('sales', 'is', null).order('date', { ascending: false }).limit(1),
+          lids.length ? supabase.from('vehicle_listings').select('listing_id, auction_datetime, event_id, auction_location, location').in('listing_id', lids) : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const sales = cov.data?.[0]?.sales;
+        if (Array.isArray(sales)) {
+          const byId = Object.fromEntries(((lst as any).data ?? []).map((l: any) => [l.listing_id, l]));
+          opportunities = opportunities.map((o) => withManheimEnd(o, byId[o.listing_id], sales));
+        }
+      } catch { /* leave ends blank */ }
+    }
     return {
-      opportunities: [...(oppsRes.data || []), ...((starredRes.data || []).filter((o: any) => !activeIds.has(o.id)))],
+      opportunities,
       accounts: (acctsRes.data || []) as { id: string; display_name: string }[],
     };
   },

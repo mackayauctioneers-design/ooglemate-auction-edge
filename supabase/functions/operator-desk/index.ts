@@ -80,11 +80,27 @@ const store: DeskStore = {
   async listingStates(listingIds) {
     const out: Record<string, any> = {};
     for (let i = 0; i < listingIds.length; i += 150) {
-      const { data, error } = await db.from("vehicle_listings").select("listing_id, status, sold_detected_at, last_seen_at, auction_datetime").in("listing_id", listingIds.slice(i, i + 150));
+      const { data, error } = await db.from("vehicle_listings").select("listing_id, status, sold_detected_at, last_seen_at, auction_datetime, event_id, auction_location, location").in("listing_id", listingIds.slice(i, i + 150));
       if (error) throw error;
       for (const l of data ?? []) out[l.listing_id] = l;
     }
     return out;
+  },
+  async manheimSales() {
+    const { data, error } = await db.from("source_coverage").select("sales").eq("source", "manheim").not("sales", "is", null).order("date", { ascending: false }).limit(1);
+    if (error) throw error; const s = data?.[0]?.sales; return Array.isArray(s) ? s : [];
+  },
+  async listCatches({ offset, limit, source, status }) {
+    let q: any = db.from("finder_catches").select("*", { count: "exact" }).order("found_at", { ascending: false }).range(offset, offset + limit - 1);
+    if (source) q = q.eq("source", source);
+    if (status) q = q.eq("status", status);
+    const { data, error, count } = await q; if (error) throw error;
+    return { rows: data ?? [], total: count ?? 0 };
+  },
+  async listCoverage() {
+    const since = new Date(Date.now() - 4 * 86400_000).toISOString().slice(0, 10);
+    const { data, error } = await db.from("source_coverage").select("date, source, listings_scanned, new, errors, catches, quiet, received_at").gte("date", since).order("date", { ascending: false }).limit(1000);
+    if (error) throw error; return data ?? [];
   },
   // Owner-only for now; may become a paid dealer feature. Fresh = seen in the last 48h and still listed.
   async listWbm() {

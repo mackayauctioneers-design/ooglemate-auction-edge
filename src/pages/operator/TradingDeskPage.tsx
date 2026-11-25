@@ -1,6 +1,7 @@
 import { directDeskData, isGateway, type DeskData } from './deskData';
 import { blankStaleAnchor, expiryReason, formatAuctionEnd } from '../../../supabase/functions/_shared/deskFreshness';
 import { WbmStrip } from '@/components/trading-desk/WbmStrip';
+import { CaughtTab } from '@/components/trading-desk/CaughtTab';
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { DealerLayout } from '@/components/layout/DealerLayout';
@@ -225,6 +226,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [gatewayOwner, setGatewayOwner] = useState(false);
   const allYards = !viaGateway || gatewayOwner;
   const isDealerMode = mode === 'dealer';
+  const [view, setView] = useState<'desk' | 'caught'>('desk');
   const Layout = isDealerMode ? DealerLayout : OperatorLayout;
 
   const [opportunities, setOpportunities] = useState<OperatorOpportunity[]>([]);
@@ -728,6 +730,19 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
 
         </div>
 
+        {/* Owner-only Caught view; the server refuses it for yard owners and the tables only allow admins. */}
+        {allYards && (
+          <div className="flex gap-1 border-b border-border" role="tablist" aria-label="Desk views">
+            {(['desk', 'caught'] as const).map((v) => (
+              <Button key={v} role="tab" aria-selected={view === v} variant="ghost" size="sm" onClick={() => setView(v)}
+                className={`rounded-none border-b-2 ${view === v ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}>
+                {v === 'desk' ? 'Desk' : 'Caught'}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {allYards && view === 'caught' ? <CaughtTab data={gw} now={nowTick} /> : (<>
         <MarketTicker now={nowTick} />
 
         {/* Daily Signal Strip */}
@@ -1250,6 +1265,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
             </div>
           </div>
         )}
+        </>)}
       </div>
     </Layout>
   );
