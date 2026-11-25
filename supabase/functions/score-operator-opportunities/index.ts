@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { derivePlatform, extractBadge as sharedExtractBadge } from "../_shared/taxonomy/derivePlatform.ts";
 import { chooseBestFit, eligibleYards, expiryReason, isFreshSale } from "../_shared/deskFreshness.ts";
+import { buildOwnerPushes, OWNER_PUSH_DEALER_NAMES } from "./ownerPush.ts";
 
 /**
  * SCORE OPERATOR OPPORTUNITIES — v2 (Delta + Caps + Rank-before-Insert)
@@ -1063,29 +1064,17 @@ Deno.serve(async (req) => {
 
     results.auction_watch_created = auctionWatchInserted;
 
-    // ── 9. AUTO-NOTIFY: push new high-tier opportunities to dealers ──
-    const NOTIFY_TIERS = new Set(["CODE_RED", "HIGH", "BUY", "AUCTION_WATCH"]);
-    const newlyCreated = toInsert.filter((row: any) => NOTIFY_TIERS.has(row.tier) && row.best_account_name);
-
-    // Group by dealer name
-    const dealerGroups = new Map<string, any[]>();
-    for (const row of newlyCreated) {
-      const name = row.best_account_name;
-      if (!dealerGroups.has(name)) dealerGroups.set(name, []);
-      dealerGroups.get(name)!.push(row);
-    }
+    // ── 9. AUTO-NOTIFY: push new high-tier opportunities to the OWNER only ──
+    // Business rule: scorer finds go to the owner first, never to yard accounts.
+    // buildOwnerPushes filters by tier only and always sets a non-empty dealer_name
+    // (push-send broadcasts to everyone when dealer_name is empty).
+    const ownerPushes = buildOwnerPushes(toInsert);
 
     let pushesSent = 0;
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    for (const [dealerName, opps] of dealerGroups) {
-      // Send one push per dealer with a summary
-      const topOpp = opps[0];
-      const vehicle = `${topOpp.year || ""} ${topOpp.make || ""} ${topOpp.model || ""}`.trim();
-      const emoji = topOpp.auction_datetime ? "🔨" : "🎯";
-      const countText = opps.length > 1 ? ` (+${opps.length - 1} more)` : "";
-
+    for (const push of ownerPushes) {
       try {
         const pushRes = await fetch(`${supabaseUrl}/functions/v1/push-send`, {
           method: "POST",
@@ -1094,12 +1083,8 @@ Deno.serve(async (req) => {
             "Authorization": `Bearer ${supabaseKey}`,
           },
           body: JSON.stringify({
-            dealer_name: dealerName,
-            title: `${emoji} ${opps.length} new match${opps.length > 1 ? "es" : ""}`,
-            body: `${topOpp.tier}: ${vehicle}${countText} • ${topOpp.listing_source || ""}`,
-            url: "/operator/trading-desk",
+            ...push,
             alertId: `score-run-${new Date().toISOString()}`,
-            force: false, // respect quiet hours
           }),
         });
 
@@ -1108,12 +1093,12 @@ Deno.serve(async (req) => {
           if (result.sent > 0) pushesSent++;
         }
       } catch (err) {
-        console.warn(`[SCORE-V2] Push to ${dealerName} failed (non-blocking):`, err);
+        console.warn(`[SCORE-V2] Push to ${push.dealer_name} failed (non-blocking):`, err);
       }
     }
 
     results.pushes_sent = pushesSent;
-    results.dealers_notified = dealerGroups.size;
+    results.dealers_notified = ownerPushes.length;
     results.runtime_ms = Date.now() - startTime;
 
     console.log(`[SCORE-V2] Done: created=${results.created} skipped_terminal=${results.skipped_terminal} pushes=${pushesSent} runtime=${results.runtime_ms}ms`);
