@@ -1,7 +1,7 @@
 // Owner-only "Caught" view: finder catches newest first + per-source coverage strip.
 // Portal sign-ins read through the operator-desk gateway (caught_list / coverage_list, refused for yard owners);
 // /auth admins read directly, where the tables only allow admins.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -45,16 +45,44 @@ export function CaughtTab({ data, now }: { data: GatewayDeskData | null; now: nu
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
+  const [tick, setTick] = useState(0);
+  const silentRef = useRef(false);
+
+  // Live updates: Supabase Realtime on finder_catches + 30s background poll fallback (same pattern as OpsPage).
+  useEffect(() => {
+    let debounce: number | undefined;
+    const backgroundRefresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      silentRef.current = true;
+      setTick((t) => t + 1);
+    };
+    const onChange = () => { window.clearTimeout(debounce); debounce = window.setTimeout(backgroundRefresh, 1_500); };
+    const channel = supabase
+      .channel('caught-tab-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'finder_catches' }, onChange)
+      .subscribe();
+    const poll = window.setInterval(backgroundRefresh, 30_000);
+    document.addEventListener('visibilitychange', backgroundRefresh);
+    return () => {
+      window.clearTimeout(debounce);
+      window.clearInterval(poll);
+      document.removeEventListener('visibilitychange', backgroundRefresh);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => { let live = true; loadCoverage(data).then((r) => live && setCoverage(r)).catch(() => live && setCoverage([])); return () => { live = false; }; }, [data]);
   useEffect(() => {
-    let live = true; setLoading(true);
+    let live = true;
+    const silent = silentRef.current;
+    silentRef.current = false;
+    if (!silent) setLoading(true);
     loadCatches(data, page, source, status)
       .then((r) => { if (live) { setRows(r.rows ?? []); setTotal(r.total ?? 0); } })
-      .catch(() => { if (live) { setRows([]); setTotal(0); } })
-      .finally(() => live && setLoading(false));
+      .catch(() => { if (live && !silent) { setRows([]); setTotal(0); } })
+      .finally(() => { if (live && !silent) setLoading(false); });
     return () => { live = false; };
-  }, [data, page, source, status]);
+  }, [data, page, source, status, tick]);
 
   const strip = coverageStrip(coverage, now);
   const sources = [...new Set([...coverage.map((c) => c.source), ...rows.map((r) => r.source), ...(source !== 'all' ? [source] : [])])].sort();

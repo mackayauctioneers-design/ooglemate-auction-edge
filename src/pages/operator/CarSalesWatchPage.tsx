@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
@@ -11,11 +11,28 @@ import { foundLabel, money, kmLabel, gapLabel } from '@/components/trading-desk/
 import { useBobPagePublisher } from '@/hooks/useBobPagePublisher';
 
 const PAGE_SIZE = 50;
+const POLL_MS = 30_000;
 type StatusFilter = 'live' | 'all' | 'expired';
+type SourceFilter = 'all' | 'macka' | 'wbm' | 'auctions';
+
+// Finders whose catches go to the Macka/Vassy chat via Carby.
+const MACKA_FINDERS = ['maca_feed', 'buy_target', 'bottom_sweep', 'winners', 'winner_hunt'];
+// Auction houses (Pickles flags, Grays, Manheim, Slattery, etc.).
+const AUCTION_SOURCES = ['pickles', 'grays', 'manheim', 'slattery', 'lloyds', 'united', 'auction_ownfloor'];
+
+const SOURCE_FILTERS: { value: SourceFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'macka', label: 'Macka-Vassy' },
+  { value: 'wbm', label: 'Way Below Market' },
+  { value: 'auctions', label: 'Auctions' },
+];
+
 interface Catch {
   catch_id: string;
   found_at: string;
   updated_at: string | null;
+  source: string | null;
+  finder: string | null;
   url: string | null;
   year: number | null;
   make: string | null;
@@ -31,7 +48,24 @@ interface Catch {
   floor_basis: string | null;
   comp_count: number | null;
   check_this: boolean | null;
+  closes_at: string | null;
+  alerted_to: string | null;
   status: string | null;
+}
+
+function applySource(query: any, source: SourceFilter) {
+  if (source === 'wbm') return query.eq('finder', 'memo23_wbm');
+  if (source === 'macka') return query.or(`alerted_to.not.is.null,finder.in.(${MACKA_FINDERS.join(',')})`);
+  if (source === 'auctions') return query.or(`closes_at.not.is.null,finder.eq.auction_ownfloor,source.in.(${AUCTION_SOURCES.join(',')})`);
+  return query;
+}
+
+function feedLabel(row: Catch) {
+  const src = (row.source ?? '').toLowerCase();
+  if (row.closes_at || row.finder === 'auction_ownfloor' || AUCTION_SOURCES.includes(src)) return 'Auction';
+  if (row.finder === 'memo23_wbm') return row.alerted_to ? 'WBM · Macka-Vassy' : 'Way Below Market';
+  if (row.alerted_to || (row.finder && MACKA_FINDERS.includes(row.finder))) return 'Macka-Vassy';
+  return row.finder ?? '—';
 }
 
 function caughtAge(iso: string, now: number) {
@@ -58,15 +92,18 @@ export default function CarSalesWatchPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState<StatusFilter>('live');
+  const [source, setSource] = useState<SourceFilter>('all');
   const [hasFloor, setHasFloor] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now);
+  const [lastLoaded, setLastLoaded] = useState<number | null>(null);
+  const silentRef = useRef(false);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useBobPagePublisher({
-    filters: { status, has_floor: hasFloor, source: 'memo23_wbm' },
+    filters: { status, has_floor: hasFloor, source },
     sortState: 'found_at_desc',
     metrics: { total_caught: total, visible_caught: rows.length, page: page + 1 },
   });
@@ -77,19 +114,50 @@ export default function CarSalesWatchPage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  // Live updates: Supabase Realtime on finder_catches + 30s background poll fallback.
+  useEffect(() => {
+    let debounce: number | undefined;
+    const backgroundRefresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      silentRef.current = true;
+      setRefresh((value) => value + 1);
+    };
+    const onChange = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(backgroundRefresh, 1_500);
+    };
+    const channel = supabase
+      .channel('car-sales-watch-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'finder_catches' }, onChange)
+      .subscribe();
+    const poll = window.setInterval(backgroundRefresh, POLL_MS);
+    document.addEventListener('visibilitychange', backgroundRefresh);
+    return () => {
+      window.clearTimeout(debounce);
+      window.clearInterval(poll);
+      document.removeEventListener('visibilitychange', backgroundRefresh);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   useEffect(() => {
     let current = true;
-    setIsLoading(true);
-    setError(null);
+    const silent = silentRef.current;
+    silentRef.current = false;
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     async function loadCatches() {
       try {
         let query = (supabase as any).from('finder_catches')
-          .select('catch_id, found_at, updated_at, url, year, make, model, badge, km, state, seller_type, ask, floor, gap_dollars, gap_pct, floor_basis, comp_count, check_this, status', { count: 'exact' })
-          .eq('finder', 'memo23_wbm');
+          .select('catch_id, found_at, updated_at, source, finder, url, year, make, model, badge, km, state, seller_type, ask, floor, gap_dollars, gap_pct, floor_basis, comp_count, check_this, closes_at, alerted_to, status', { count: 'exact' });
+        query = applySource(query, source);
         if (status !== 'all') query = query.eq('status', status);
         if (hasFloor) query = query.not('floor', 'is', null);
         const { data, error: queryError, count } = await query
           .order('found_at', { ascending: false })
+          .order('updated_at', { ascending: false, nullsFirst: false })
           .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
         if (queryError) throw queryError;
         if (current) {
@@ -102,22 +170,25 @@ export default function CarSalesWatchPage() {
           } else {
             setRows((data ?? []) as Catch[]);
           }
+          setError(null);
           setNow(Date.now());
+          setLastLoaded(Date.now());
         }
       } catch (err) {
-        if (current) {
+        // A failed background refresh keeps the rows already on screen.
+        if (current && !silent) {
           setRows([]);
           setTotal(0);
           const detail = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Please try refreshing.';
           setError(`Unable to load catches. ${detail}`);
         }
       } finally {
-        if (current) setIsLoading(false);
+        if (current && !silent) setIsLoading(false);
       }
     }
     void loadCatches();
     return () => { current = false; };
-  }, [page, status, hasFloor, refresh]);
+  }, [page, status, source, hasFloor, refresh]);
 
   return (
     <OperatorLayout>
@@ -127,13 +198,34 @@ export default function CarSalesWatchPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-foreground">Car Sales Watch</h1>
             <p className="text-sm text-muted-foreground">
-              Carsales listings tagged Well Below Market (memo23 feed), newest catch first. Carsales can drop the tag after we catch it.
+              Every best-value car in one place: Macka-Vassy alerts, Way Below Market listings and auction flags, newest catch first. Updates automatically.
             </p>
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Feed">
+          {SOURCE_FILTERS.map((f) => (
+            <Button
+              key={f.value}
+              size="sm"
+              variant={source === f.value ? 'default' : 'outline'}
+              className="h-8 rounded-full px-3 text-xs"
+              aria-pressed={source === f.value}
+              onClick={() => { setSource(f.value); setPage(0); }}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-medium tabular-nums" aria-live="polite">{isLoading ? '… caught' : error ? '— caught' : `${total.toLocaleString('en-AU')} caught`}</span>
+          {lastLoaded != null && !isLoading && !error && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+              Live · updated {caughtAge(new Date(lastLoaded).toISOString(), now)}
+            </span>
+          )}
           <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
             <div className="flex items-center gap-2">
               <label htmlFor="catch-status" className="text-xs text-muted-foreground">Status</label>
@@ -168,6 +260,7 @@ export default function CarSalesWatchPage() {
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Caught</TableHead>
                     <TableHead>Car</TableHead>
+                    <TableHead>Feed</TableHead>
                     <TableHead className="text-right">Ask</TableHead>
                     <TableHead className="text-right">Floor</TableHead>
                     <TableHead className="text-right">Gap</TableHead>
@@ -184,6 +277,10 @@ export default function CarSalesWatchPage() {
                         <div className="font-medium">{[row.year, row.make, row.model, row.badge].filter(Boolean).join(' ') || '—'}</div>
                         {row.km != null && <div className="text-xs text-muted-foreground">{kmLabel(row.km)}</div>}
                       </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        <div>{feedLabel(row)}</div>
+                        {row.source && <div className="text-muted-foreground">{row.source}</div>}
+                      </TableCell>
                       <TableCell className="text-right whitespace-nowrap tabular-nums">{money(row.ask)}</TableCell>
                       <TableCell className="text-right whitespace-nowrap tabular-nums">{money(row.floor)}</TableCell>
                       <TableCell className="text-right whitespace-nowrap tabular-nums">{row.floor == null ? '—' : gapLabel(row.gap_dollars, row.gap_pct)}</TableCell>
@@ -192,7 +289,7 @@ export default function CarSalesWatchPage() {
                       <TableCell>
                         {row.url && (
                           <Button asChild variant="ghost" size="iconSm">
-                            <a href={row.url} target="_blank" rel="noreferrer" aria-label={`Open Carsales listing for ${[row.year, row.make, row.model].filter(Boolean).join(' ')}`} title="Open Carsales listing"><ExternalLink className="h-3.5 w-3.5" /></a>
+                            <a href={row.url} target="_blank" rel="noreferrer" aria-label={`Open listing for ${[row.year, row.make, row.model].filter(Boolean).join(' ')}`} title="Open listing"><ExternalLink className="h-3.5 w-3.5" /></a>
                           </Button>
                         )}
                       </TableCell>
